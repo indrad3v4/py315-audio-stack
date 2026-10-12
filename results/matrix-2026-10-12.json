@@ -1,0 +1,247 @@
+{
+  "target": "315",
+  "python": "3.12.15",
+  "rows": [
+    {
+      "package": "numpy",
+      "version": "2.5.4",
+      "status": "wheel",
+      "wheel_tags": [
+        "cp312",
+        "cp313",
+        "cp314",
+        "cp315"
+      ],
+      "wheels": 65,
+      "sdists": 1,
+      "note": "native 315 wheel"
+    },
+    {
+      "package": "scipy",
+      "version": "1.18.1",
+      "status": "wheel",
+      "wheel_tags": [
+        "cp312",
+        "cp313",
+        "cp314",
+        "cp315"
+      ],
+      "wheels": 60,
+      "sdists": 1,
+      "note": "native 315 wheel"
+    },
+    {
+      "package": "numba",
+      "version": "0.68.0",
+      "status": "wheel",
+      "wheel_tags": [
+        "cp310",
+        "cp311",
+        "cp312",
+        "cp313",
+        "cp314",
+        "cp315"
+      ],
+      "wheels": 31,
+      "sdists": 1,
+      "note": "native 315 wheel"
+    },
+    {
+      "package": "soundfile",
+      "version": "0.14.0",
+      "status": "pure",
+      "wheel_tags": [
+        "py3"
+      ],
+      "wheels": 8,
+      "sdists": 1,
+      "note": "pure-python wheel (version-agnostic)"
+    },
+    {
+      "package": "librosa",
+      "version": "1.0.0",
+      "status": "pure",
+      "wheel_tags": [
+        "py3"
+      ],
+      "wheels": 1,
+      "sdists": 1,
+      "note": "pure-python wheel (version-agnostic)"
+    },
+    {
+      "package": "noisereduce",
+      "version": "3.0.3",
+      "status": "pure",
+      "wheel_tags": [
+        "py3"
+      ],
+      "wheels": 1,
+      "sdists": 1,
+      "note": "pure-python wheel (version-agnostic)"
+    },
+    {
+      "package": "opensmile",
+      "version": "2.6.0",
+      "status": "py3-wheel",
+      "wheel_tags": [
+        "py3"
+      ],
+      "wheels": 6,
+      "sdists": 1,
+      "note": "py3 platform wheel (macosx_10_4_x86_64.whl) — no build needed"
+    },
+    {
+      "package": "praat-parselmouth",
+      "version": "0.4.7",
+      "status": "no-wheel-for-you",
+      "wheel_tags": [
+        "cp310",
+        "cp311",
+        "cp312",
+        "cp313",
+        "cp314",
+        "cp35",
+        "cp36",
+        "cp37",
+        "cp38",
+        "cp39",
+        "pp310",
+        "pp311",
+        "pp36",
+        "pp37",
+        "pp38",
+        "pp39"
+      ],
+      "wheels": 99,
+      "sdists": 1,
+      "note": "wheels exist but only for cp310, cp311, cp312, cp313, cp314, cp35, cp36, cp37, cp38, cp39, pp310, pp311, pp36, pp37, pp38, pp39"
+    },
+    {
+      "package": "webrtcvad",
+      "version": "2.0.10",
+      "status": "sdist-only",
+      "wheel_tags": [],
+      "wheels": 0,
+      "sdists": 1,
+      "note": "source distribution only — needs a toolchain"
+    },
+    {
+      "package": "av",
+      "version": "19.0.1",
+      "status": "no-wheel-for-you",
+      "wheel_tags": [
+        "cp312",
+        "cp314"
+      ],
+      "wheels": 18,
+      "sdists": 1,
+      "note": "wheels exist but only for cp312, cp314"
+    },
+    {
+      "package": "pymupdf",
+      "version": "1.28.2",
+      "status": "no-wheel-for-you",
+      "wheel_tags": [
+        "cp310",
+        "cp313",
+        "cp314"
+      ],
+      "wheels": 10,
+      "sdists": 1,
+      "note": "wheels exist but only for cp310, cp313, cp314"
+    },
+    {
+      "package": "faster-whisper",
+      "version": "1.2.1",
+      "status": "pure",
+      "wheel_tags": [
+        "py3"
+      ],
+      "wheels": 1,
+      "sdists": 0,
+      "note": "pure-python wheel (version-agnostic)"
+    },
+    {
+      "package": "ctranslate2",
+      "version": "4.8.2",
+      "status": "no-wheel-for-you",
+      "wheel_tags": [
+        "cp310",
+        "cp311",
+        "cp312",
+        "cp313",
+        "cp314",
+        "cp39"
+      ],
+      "wheels": 35,
+      "sdists": 0,
+      "note": "wheels exist but only for cp310, cp311, cp312, cp313, cp314, cp39"
+    },
+    {
+      "package": "onnxruntime",
+      "version": "1.31.0",
+      "status": "no-wheel-for-you",
+      "wheel_tags": [
+        "cp311",
+        "cp312",
+        "cp313",
+        "cp314"
+      ],
+      "wheels": 24,
+      "sdists": 0,
+      "note": "wheels exist but only for cp311, cp312, cp313, cp314"
+    },
+    {
+      "package": "torch",
+      "version": "2.14.1",
+      "status": "no-wheel-for-you",
+      "wheel_tags": [
+        "cp310",
+        "cp311",
+        "cp312",
+        "cp313",
+        "cp314"
+      ],
+      "wheels": 24,
+      "sdists": 0,
+      "note": "wheels exist but only for cp310, cp311, cp312, cp313, cp314"
+    },
+    {
+      "package": "torchaudio",
+      "version": "2.11.0",
+      "status": "no-wheel-for-you",
+      "wheel_tags": [
+        "cp310",
+        "cp311",
+        "cp312",
+        "cp313",
+        "cp314"
+      ],
+      "wheels": 28,
+      "sdists": 0,
+      "note": "wheels exist but only for cp310, cp311, cp312, cp313, cp314"
+    },
+    {
+      "package": "fal-client",
+      "version": "1.0.3",
+      "status": "pure",
+      "wheel_tags": [
+        "py3"
+      ],
+      "wheels": 1,
+      "sdists": 1,
+      "note": "pure-python wheel (version-agnostic)"
+    },
+    {
+      "package": "boto3",
+      "version": "1.43.112",
+      "status": "pure",
+      "wheel_tags": [
+        "py3"
+      ],
+      "wheels": 1,
+      "sdists": 1,
+      "note": "pure-python wheel (version-agnostic)"
+    }
+  ]
+}

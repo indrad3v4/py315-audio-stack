@@ -1,0 +1,102 @@
+name: cp315 wheels
+
+# Builds cp315 manylinux wheels for the audio/ML packages that ship no cp315
+# wheel upstream. Artifacts land on every push; tags turn them into release
+# assets that pip can install straight from the release URL.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  wheels:
+    name: ${{ matrix.package }} (cp315)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: webrtcvad
+            system: ""
+          - package: praat-parselmouth
+            system: "python -m pip install swig"
+          - package: av
+            system: "yum install -y ffmpeg-devel"
+          - package: pymupdf
+            system: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && export PATH=$HOME/.cargo/bin:$PATH"
+          - package: ctranslate2
+            system: "yum install -y cmake"
+    env:
+      CIBW_BUILD: cp315-manylinux_x86_64
+      CIBW_BEFORE_ALL_LINUX: ${{ matrix.system }}
+      CIBW_BUILD_VERBOSITY: "1"
+      CIBW_TEST_COMMAND: python -c "import importlib; m=importlib.import_module('${{ matrix.package }}'.replace('-','_')); print('IMPORT OK', getattr(m,'__version__','?'))"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"   # host interpreter for the cibuildwheel CLI only
+
+      - name: Fetch the sdist we intend to build
+        run: |
+          pip install --upgrade pip
+          pip install cibuildwheel
+          mkdir -p dl src
+          pip download --no-deps --no-binary :all: -d dl "${{ matrix.package }}"
+          ls -la dl/
+
+      - name: Unpack the sdist
+        run: |
+          shopt -s nullglob
+          for f in dl/*.tar.gz dl/*.tgz; do tar -xzf "$f" -C src; done
+          for f in dl/*.zip;            do unzip -q  "$f" -d src; done
+          ls -la src/
+
+      - name: Build the wheel
+        run: |
+          if [ -n "${{ matrix.system }}" ]; then eval "${{ matrix.system }}"; fi
+          python -m cibuildwheel --output-dir wheelhouse src/*/
+
+      - name: Show what we built
+        run: |
+          ls -la wheelhouse/
+          for w in wheelhouse/*.whl; do
+            echo "--- $w"
+            unzip -l "$w" | grep -E '\.so|\.pyd' | head -5
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.package }}-cp315
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+
+  release:
+    name: attach wheels to release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: wheels
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.whl
+          fail_on_unmatched_files: true
+
+  blocked-upstream:
+    name: report what stays blocked
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe the upstream-blocked set
+        run: python3 py315_probe.py --cp 315 --packages torch torchaudio onnxruntime
