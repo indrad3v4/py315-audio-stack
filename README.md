@@ -95,7 +95,26 @@ pip install --find-links https://github.com/<owner>/py315-audio-stack/releases/l
 Per-package system dependencies (SWIG, FFmpeg headers, CMake, Rust) are declared
 in the workflow, not hidden in a wiki.
 
-## Build results — first run, 2026-10-12
+## Build results — run 2 (workflow v2)
+
+Run [`38315956261`](https://github.com/indrad3v4/py315-audio-stack/actions/runs/38315956261).
+**One wheel published: `webrtcvad`** — built, imported, uploaded
+(`wheel-webrtcvad-cp315`, 85 KB). The other four moved forward and failed one
+layer deeper, each for a reason visible only in the log:
+
+| Package | Outcome | Root cause | Fix in workflow v3 |
+|---|---|---|---|
+| `webrtcvad` | ✅ **SUCCESS** — wheel artifact uploaded | — | done |
+| `praat-parselmouth` | compiled, then failed | CMake aborted: *"unable to find a build program corresponding to Ninja"* — Ninja is not in the manylinux base image | `pip install swig ninja` in before-all |
+| `pymupdf` | failed in *Fetch source from PyPI* | the sdist's build backend invokes `cargo` during **metadata generation on the host** — Rust was only installed inside the build container | install rustup host-side too |
+| `av` | failed before compiling | `yum install -y ffmpeg-devel pkgconfig` → non-zero: `pkgconfig` is not a package name on the AlmaLinux-based manylinux image (it is `pkgconf-pkg-config`), and `ffmpeg-devel` needs RPM Fusion | `epel-release` + `pkgconf-pkg-config`, then `ffmpeg-devel` |
+| `ctranslate2` | source fetched, build frontend not found | *"Could not find any of {setup.py, setup.cfg, pyproject.toml} at root of package"* — CTranslate2's Python project lives in `python/`, not at the repo root | build `src/ctranslate2/python/` |
+
+Progression worth noting: `webrtcvad` went from *"import fails, no wheel"* to a
+published artifact by installing one package into the test environment. That is
+what "adapting to 3.15" actually costs when the library is alive.
+
+## Build results — run 1 (workflow v1)
 
 Run [`38315515682`](https://github.com/indrad3v4/py315-audio-stack/actions) on
 `main`. **Zero wheels published yet** — and every failure is now diagnosed from

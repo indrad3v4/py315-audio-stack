@@ -4,10 +4,11 @@ name: cp315 wheels
 # wheel upstream. Artifacts land on every push; tags turn them into release
 # assets that pip can install straight from the release URL.
 #
-# Every matrix entry carries the four things that actually decide whether a
-# cp315 wheel can exist: where the source comes from, what the host needs before
-# metadata generation, what the build container needs, and what the import test
-# needs. Diagnosed from real failed runs — see README "Build results".
+# Each matrix entry declares the four things that actually decide whether a
+# cp315 wheel can exist: where the source comes from, what the *host* needs
+# (metadata generation happens there, not in the build container), what the
+# build container needs, and what the import test needs. Every value below was
+# written after reading a failed run — see README "Build results".
 
 on:
   push:
@@ -23,52 +24,54 @@ jobs:
   wheels:
     name: ${{ matrix.package }} (cp315)
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
-          # cheapest target: one C file, no deps. Its failure mode is not the
-          # build but the import: webrtcvad.py does `import pkg_resources`,
-          # which setuptools >= 81 no longer ships.
+          # Green since v2: the extension compiles in seconds; the import only
+          # needs setuptools<81 for the removed pkg_resources.
           - package: webrtcvad
             origin: pypi
             host_system: ""
             container_system: ""
             container_env: ""
             test_extra: "setuptools<81"
-          # first real C++ target; SWIG is the only external tool.
+          # v2 compiled the C++ and died on a missing build tool: CMake on
+          # manylinux needs Ninja, which is not in the base image.
           - package: praat-parselmouth
             origin: pypi
             host_system: ""
-            container_system: "python -m pip install swig"
+            container_system: "python -m pip install swig ninja"
             container_env: ""
             test_extra: ""
-          # needs FFmpeg headers twice: once on the host to generate metadata,
-          # once in the build container to compile.
+          # v2 failed before compiling: `yum install pkgconfig` does not exist on
+          # the AlmaLinux-based manylinux image (it is pkgconf-pkg-config), and
+          # ffmpeg-devel comes from RPM Fusion, not the base repos.
           - package: av
             origin: pypi
             host_system: "sudo apt-get update -qq && sudo apt-get install -y -qq pkg-config libavformat-dev libavcodec-dev libavdevice-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev"
-            container_system: "yum install -y ffmpeg-devel pkgconfig"
+            container_system: "yum install -y epel-release || true; yum install -y pkgconf-pkg-config || true; yum install -y ffmpeg-devel"
             container_env: ""
             test_extra: ""
-          # Rust is required, and `export PATH=...` inside before-all does not
-          # persist — the toolchain must be installed in before-all and exposed
-          # through CIBW_ENVIRONMENT_LINUX.
+          # v2 died during host-side metadata generation: the sdist's build
+          # backend invokes cargo before cibuildwheel is even reached, so Rust is
+          # needed on the host as well.
           - package: pymupdf
             origin: pypi
-            host_system: ""
+            host_system: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && export PATH=$HOME/.cargo/bin:$PATH"
             container_system: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
             container_env: "PATH=$HOME/.cargo/bin:$PATH"
             test_extra: ""
-          # ctranslate2 publishes wheels only: zero sdists on PyPI, so the
-          # source has to come from git regardless of what pip says.
+          # v2 got the source but could not find a build frontend: the Python
+          # package of CTranslate2 lives in `python/`, not at the repo root.
           - package: ctranslate2
             origin: git
             git_url: https://github.com/OpenNMT/CTranslate2.git
             git_tag: v4.8.2
+            package_dir: src/ctranslate2/python/
             host_system: ""
-            container_system: "yum install -y cmake"
+            container_system: "yum install -y cmake ninja-build"
             container_env: ""
             test_extra: ""
     env:
@@ -112,7 +115,11 @@ jobs:
           ls -la src/
 
       - name: Build the wheel
-        run: python -m cibuildwheel --output-dir wheelhouse src/*/
+        run: |
+          TARGET="${{ matrix.package_dir }}"
+          [ -n "$TARGET" ] || TARGET=$(ls -d src/*/ | head -1)
+          echo "building $TARGET"
+          python -m cibuildwheel --output-dir wheelhouse "$TARGET"
 
       - name: Show what we built
         run: |
