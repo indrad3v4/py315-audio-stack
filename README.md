@@ -95,6 +95,33 @@ pip install --find-links https://github.com/<owner>/py315-audio-stack/releases/l
 Per-package system dependencies (SWIG, FFmpeg headers, CMake, Rust) are declared
 in the workflow, not hidden in a wiki.
 
+## Build results — runs 5 and 6 (workflow v5 / v6)
+
+Runs [`38322566111`](https://github.com/indrad3v4/py315-audio-stack/actions/runs/38322566111) and
+[`38322858000`](https://github.com/indrad3v4/py315-audio-stack/actions/runs/38322858000).
+
+| Package | Outcome | Root cause | Fix in workflow v7 |
+|---|---|---|---|
+| `webrtcvad` | ✅ SUCCESS (fifth run in a row) | — | — |
+| `av` | FFmpeg devel installed; compile failed on two enums | `AV_HWDEVICE_TYPE_AMF` (v4, FFmpeg 4.2), `AV_HWDEVICE_TYPE_OHCODEC` (v5, FFmpeg 5.1) — both are **FFmpeg 7.1+**, and no RPM Fusion repo for el8/el9 ships 7.x | build FFmpeg 7.1 from source in the container, install to `/usr` with pkg-config metadata |
+| `pymupdf` | MuPDF itself built (3m26s, exit 0), then the metadata step died | `OSError: libclang.so: cannot open shared object file` — `clang/cindex.py` calls `dlopen("libclang.so")` with no path, and `LIBCLANG_PATH` does not reach pip's isolated build env | copy `libclang.so` to `/usr/local/lib` + `ldconfig`, then **prove** it loads via `env -u LIBCLANG_PATH … CDLL('libclang.so')` |
+| `praat-parselmouth` | same Ninja error as v3 | the v4.1 fix was shell-quoted and cibuildwheel wraps `CIBW_BEFORE_ALL_*` in its own `sh -c`, so `cp` and `which` both failed silently | EPEL's `ninja-build`, no quoting, `ninja --version` as the check |
+
+Two lessons worth more than the wheels:
+
+1. **`CIBW_BEFORE_ALL_*` runs through a shell wrapper.** Nested quotes around `$(...)`
+   get mangled — silently, because the command ends with `|| true`. Anything
+   quote-shaped belongs in a package manager call instead.
+2. **Environment variables are not a transport mechanism.** Rust, FFmpeg, Ninja and
+   libclang all failed at least once precisely because a variable set in one place
+   was absent where the work actually ran: a different step, a different machine
+   (host vs container), or pip's isolated build env. Paths written into the
+   filesystem — `/usr/local/lib`, `/usr`, `$GITHUB_PATH` — survived; variables did not.
+
+`pymupdf` is also the clearest case that "the build failed" and "the build failed to
+*tell you* it built" are different problems: MuPDF compiled perfectly, then the step
+that reports it fell over.
+
 ## Build results — run 4 (workflow v4 / v4.1)
 
 Runs [`38320291548`](https://github.com/indrad3v4/py315-audio-stack/actions/runs/38320291548) and

@@ -4,18 +4,21 @@ name: cp315 wheels
 # wheel upstream. Artifacts land on every push; tags turn them into release
 # assets that pip can install straight from the release URL.
 #
-# Each matrix entry declares the things that decide whether a cp315 wheel can
-# exist: where the source comes from (and whether its git submodules are
-# needed), which manylinux image to build in, what the *host* needs before
-# metadata generation, what the build container needs, and what the import test
-# needs. Every value below is written after reading a failed run — the run-by-run
-# diagnosis is in README "Build results".
+# Each matrix entry declares what decides whether a cp315 wheel can exist:
+# where the source comes from, which manylinux image to build in, what the host
+# needs before metadata generation, what the build container needs, and what the
+# import test needs. Every value is written after reading a failed run — the
+# run-by-run diagnosis is in README "Build results".
 #
-# Not in the matrix, on purpose: ctranslate2. Its python/pyproject.toml uses
-# plain setuptools and its setup.py compiles cpp/*.cc while expecting the C++
-# core and its generated headers to exist already — building it needs a CMake
-# step over the whole repo first, then the bindings. That is a dedicated build,
-# not a matrix line.
+# Not in the matrix, on purpose: ctranslate2. python/pyproject.toml is plain
+# setuptools and setup.py compiles cpp/*.cc while expecting the C++ core and its
+# generated headers to exist already. That is a dedicated CMake-then-bindings
+# build, not a matrix line.
+#
+# Quoting rule learned the hard way: CIBW_BEFORE_ALL_* is itself wrapped in
+# `sh -c`, so nested quotes around $(...) get mangled (v4.1's ninja copy died
+# that way, silently). Keep container commands quote-free or let a package
+# manager do the work.
 
 on:
   push:
@@ -46,46 +49,63 @@ jobs:
             container_system: ""
             container_env: ""
             test_extra: "setuptools<81"
-          # v2: died on missing Ninja. v3: 'pip install ninja' put the binary in
-          # the container python's bin dir, which is not on PATH, so CMake still
-          # refused. v4.1 copies it to /usr/local/bin and verifies with `which`.
+          # v2: no Ninja. v3/v4.1: pip's ninja wheel landed off-PATH, and the
+          # shell-quoted copy was mangled by cibuildwheel's own `sh -c` wrapper,
+          # so `cp` and `which` both failed quietly and CMake still saw nothing.
+          # v7: EPEL carries ninja-build — no quoting, no PATH games.
           - package: praat-parselmouth
             origin: pypi
             manylinux_image: ""
             host_system: ""
             host_pip: ""
-            container_system: >-
-              python -m pip install swig ninja;
-              NINJA=$(python -c "import ninja, os; print(os.path.join(os.path.dirname(ninja.__file__), 'data', 'bin', 'ninja'))");
-              cp "$NINJA" /usr/local/bin/ninja 2>/dev/null || true;
-              which ninja || yum install -y ninja-build
+            container_system: "yum install -y epel-release; yum install -y ninja-build; ninja --version"
             container_env: ""
             test_extra: ""
           # v3: 'yum install ffmpeg-devel' -> no match (EPEL has no FFmpeg).
-          # v4: RPM Fusion fixed that, and the build then failed on real API
-          # gaps: 'av_channel_layout_describe' undeclared, 'AVCodecParameters'
-          # has no member 'ch_layout'. AlmaLinux 8 carries FFmpeg 4.2; PyAV needs
-          # a much newer one, so this target builds in manylinux_2_34 (Alma 9)
-          # with the el9 RPM Fusion repo.
+          # v4: RPM Fusion on Alma 8 -> compile died on AV_HWDEVICE_TYPE_AMF.
+          # v5: manylinux_2_34 with el9 RPM Fusion -> died on
+          # AV_HWDEVICE_TYPE_OHCODEC. Both enums are FFmpeg 7.1+, and no RPM
+          # Fusion repo for el8/el9 carries FFmpeg 7 — so the container builds
+          # FFmpeg 7.1 from source and installs it to /usr with pkg-config
+          # metadata. That is the real prerequisite; everything else was noise.
           - package: av
             origin: pypi
             manylinux_image: manylinux_2_34
             host_system: "sudo apt-get update -qq && sudo apt-get install -y -qq pkg-config libavformat-dev libavcodec-dev libavdevice-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev"
             host_pip: ""
-            container_system: "yum install -y epel-release || true; yum install -y https://mirrors.rpmfusion.org/free/el/rpmfusion-free-release-9.noarch.rpm || true; yum install -y pkgconf-pkg-config || true; yum install -y ffmpeg-devel"
+            container_system: >-
+              yum install -y epel-release;
+              yum install -y pkgconf-pkg-config nasm yasm gcc-c++ make xz;
+              curl -sL https://ffmpeg.org/releases/ffmpeg-7.1.tar.xz -o /tmp/ffmpeg.tar.xz;
+              tar -xf /tmp/ffmpeg.tar.xz -C /tmp;
+              cd /tmp/ffmpeg-7.1;
+              ./configure --prefix=/usr --enable-shared --disable-static --enable-gpl --enable-pic --disable-doc;
+              make -j$(nproc);
+              make install;
+              ldconfig;
+              pkg-config --modversion libavcodec
             container_env: ""
             test_extra: ""
-          # v2: cargo runs during host-side metadata generation, not only in the
-          # build container. v3: that step also needs clang's Python bindings
-          # (libclang.so) — mupdfwrap.py drives them. v4.1 proved the matrix
-          # cannot carry a nested-quoted shell expression, hence the dedicated
-          # step below.
+          # v2: cargo is needed during host-side metadata generation, not only in
+          # the build container. v3: that step also needs clang's bindings.
+          # v5: "pip install libclang" installs the *clang* package — there is no
+          # libclang module (verified against the wheel: it ships
+          # clang/native/libclang.so). v6 pointed LIBCLANG_PATH at that dir and
+          # still failed: clang/cindex.py called dlopen("libclang.so") with no
+          # path, because the metadata build runs in pip's isolated build env
+          # where that variable never arrived. v7 stops relying on the variable:
+          # the .so goes to /usr/local/lib + ldconfig, and a smoke test loads it
+          # with no env vars set at all.
           - package: pymupdf
             origin: pypi
             manylinux_image: ""
             host_system: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
             host_pip: "libclang"
-            container_system: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
+            container_system: >-
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y;
+              python -m pip install libclang;
+              cp $(python -c "import clang, os; print(os.path.dirname(clang.__file__))")/native/libclang.so /usr/local/lib/libclang.so;
+              ldconfig
             container_env: "PATH=$HOME/.cargo/bin:$PATH"
             test_extra: ""
     env:
@@ -117,12 +137,14 @@ jobs:
       - name: Host-side env for pymupdf
         if: matrix.package == 'pymupdf'
         run: |
-          # The PyPI package named "libclang" installs the *clang* package; its
-          # shared library lives in clang/native/libclang.so and there is no
-          # importable "libclang" module (v5 proved that: ModuleNotFoundError).
-          LIBCLANG_PATH="$(python -c 'import clang, os; print(os.path.join(os.path.dirname(clang.__file__), "native"))')"
-          ls -la "$LIBCLANG_PATH/libclang.so"
-          echo "LIBCLANG_PATH=$LIBCLANG_PATH" >> "$GITHUB_ENV"
+          LIBCLANG_DIR="$(python -c 'import clang, os; print(os.path.join(os.path.dirname(clang.__file__), "native"))')"
+          ls -la "$LIBCLANG_DIR/libclang.so"
+          sudo cp "$LIBCLANG_DIR/libclang.so" /usr/local/lib/
+          sudo ldconfig
+          # Proof, not hope: load it with no LIBCLANG_* variable set anywhere.
+          env -u LIBCLANG_PATH -u LIBCLANG_LIBRARY_PATH python -c "import ctypes; ctypes.CDLL('libclang.so'); print('libclang.so resolves system-wide')"
+          echo "LIBCLANG_PATH=$LIBCLANG_DIR" >> "$GITHUB_ENV"
+          echo "LIBCLANG_LIBRARY_PATH=$LIBCLANG_DIR" >> "$GITHUB_ENV"
 
       - name: Prepare cibuildwheel
         run: |
