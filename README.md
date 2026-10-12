@@ -95,6 +95,27 @@ pip install --find-links https://github.com/<owner>/py315-audio-stack/releases/l
 Per-package system dependencies (SWIG, FFmpeg headers, CMake, Rust) are declared
 in the workflow, not hidden in a wiki.
 
+## Build results — first run, 2026-10-12
+
+Run [`38315515682`](https://github.com/indrad3v4/py315-audio-stack/actions) on
+`main`. **Zero wheels published yet** — and every failure is now diagnosed from
+its own log, not guessed. Five jobs, five different reasons, one shared lesson:
+"no cp315 wheel" hides a *specific* defect that a probe cannot see.
+
+| Package | Outcome | Root cause (from the job log) | Fix in workflow v2 |
+|---|---|---|---|
+| `webrtcvad` | **wheel BUILT in 3.7 s**, then the job failed | `webrtcvad.py` line 1 is `import pkg_resources` — removed from setuptools ≥ 81, so the extension compiled but the module could not import | install `setuptools<81` in the test environment (`CIBW_BEFORE_TEST_LINUX`) |
+| `ctranslate2` | failed before any compile | `pip download --no-binary :all: ctranslate2` → *"no matching distribution"*: PyPI lists **35 files, 0 sdists** — there is no source tarball to build | fetch from the git tag `v4.8.2` instead |
+| `av` | metadata generation failed | the *host* step that generates build metadata needs FFmpeg headers (`pkg-config`, `libav*-dev`); they are not on a bare runner, and `CIBW_BEFORE_ALL_LINUX` only affects the build container | install FFmpeg dev packages host-side **and** `ffmpeg-devel` in the container |
+| `pymupdf` | `metadata-generation-failed` | the build needs the Rust toolchain, and `export PATH=$HOME/.cargo/bin` inside *before-all* does not persist across cibuildwheel's shells | keep the install in before-all, expose the path via `CIBW_ENVIRONMENT_LINUX` |
+| `praat-parselmouth` | still running at the time of writing | — | unchanged |
+
+The most useful result is `webrtcvad`: **its cp315 wheel exists and works; the
+library itself is what breaks.** `pkg_resources` was removed from setuptools in
+2025, so the 2018-era code cannot import on a modern environment regardless of
+Python version. A cp315 wheel is not the fix — the fix is dropping the
+`pkg_resources` import (or using a maintained fork).
+
 ## Substitutions when a build is not worth it
 
 | Blocked | Substitute | Why |
