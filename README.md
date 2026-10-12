@@ -95,6 +95,23 @@ pip install --find-links https://github.com/<owner>/py315-audio-stack/releases/l
 Per-package system dependencies (SWIG, FFmpeg headers, CMake, Rust) are declared
 in the workflow, not hidden in a wiki.
 
+## Build results — run 3 (workflow v3)
+
+Run [`38317992784`](https://github.com/indrad3v4/py315-audio-stack/actions/runs/38317992784).
+
+| Package | Outcome | Root cause | Fix in workflow v4 |
+|---|---|---|---|
+| `webrtcvad` | ✅ **SUCCESS** again | stable | — |
+| `praat-parselmouth` | compiling (longest target: the whole Praat C++ core) | — | pending |
+| `av` | failed in before-all | `yum install -y ffmpeg-devel` → *"Unable to find a match"*: EPEL does not carry FFmpeg; the RPM Fusion free repo must be added explicitly, and manylinux_2_28 is AlmaLinux **8** | add `rpmfusion-free-release-8.noarch.rpm`, then `ffmpeg-devel` |
+| `pymupdf` | failed in host metadata generation | `OSError: libclang.so: cannot open shared object file` — `mupdfwrap.py` drives clang's Python bindings before cibuildwheel runs | `pip install libclang` host-side + export `LIBCLANG_PATH` |
+| `ctranslate2` | reached the compiler, headers missing | `fatal error: ctranslate2/encoder.h: No such file or directory` — a `--depth 1` clone carries no submodules, so CMake has no spdlog/cpu_features to generate the headers from | clone with `--recurse-submodules --shallow-submodules` |
+
+Second lesson of the same shape: **the host step and the build container are two
+different machines.** Rust (`pymupdf`), FFmpeg headers (`av`) and clang bindings
+(`pymupdf`) each had to be installed twice, and `export` inside one CI step does
+not reach the next — environment now travels through `$GITHUB_ENV`/`$GITHUB_PATH`.
+
 ## Build results — run 2 (workflow v2)
 
 Run [`38315956261`](https://github.com/indrad3v4/py315-audio-stack/actions/runs/38315956261).

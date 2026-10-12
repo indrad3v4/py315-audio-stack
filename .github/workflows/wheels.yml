@@ -4,11 +4,11 @@ name: cp315 wheels
 # wheel upstream. Artifacts land on every push; tags turn them into release
 # assets that pip can install straight from the release URL.
 #
-# Each matrix entry declares the four things that actually decide whether a
-# cp315 wheel can exist: where the source comes from, what the *host* needs
-# (metadata generation happens there, not in the build container), what the
-# build container needs, and what the import test needs. Every value below was
-# written after reading a failed run — see README "Build results".
+# Each matrix entry declares the five things that decide whether a cp315 wheel
+# can exist: where the source comes from (and whether its git submodules are
+# needed), what the *host* needs before metadata generation, what the build
+# container needs, what environment both need, and what the import test needs.
+# Every value is written after reading a failed run — see README "Build results".
 
 on:
   push:
@@ -24,7 +24,7 @@ jobs:
   wheels:
     name: ${{ matrix.package }} (cp315)
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
@@ -34,43 +34,54 @@ jobs:
           - package: webrtcvad
             origin: pypi
             host_system: ""
+            host_pip: ""
+            host_env_cmd: ""
             container_system: ""
             container_env: ""
             test_extra: "setuptools<81"
-          # v2 compiled the C++ and died on a missing build tool: CMake on
-          # manylinux needs Ninja, which is not in the base image.
+          # v3 compiled the whole Praat C++ core (still running at ~20 min) after
+          # v2 died on the missing Ninja.
           - package: praat-parselmouth
             origin: pypi
             host_system: ""
+            host_pip: ""
+            host_env_cmd: ""
             container_system: "python -m pip install swig ninja"
             container_env: ""
             test_extra: ""
-          # v2 failed before compiling: `yum install pkgconfig` does not exist on
-          # the AlmaLinux-based manylinux image (it is pkgconf-pkg-config), and
-          # ffmpeg-devel comes from RPM Fusion, not the base repos.
+          # v3: `yum install ffmpeg-devel` → "Unable to find a match". EPEL alone
+          # does not carry FFmpeg; the RPM Fusion free repo has to be added
+          # explicitly, and manylinux_2_28 is AlmaLinux 8.
           - package: av
             origin: pypi
             host_system: "sudo apt-get update -qq && sudo apt-get install -y -qq pkg-config libavformat-dev libavcodec-dev libavdevice-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev"
-            container_system: "yum install -y epel-release || true; yum install -y pkgconf-pkg-config || true; yum install -y ffmpeg-devel"
+            host_pip: ""
+            host_env_cmd: ""
+            container_system: "yum install -y epel-release || true; yum install -y https://mirrors.rpmfusion.org/free/el/rpmfusion-free-release-8.noarch.rpm || true; yum install -y pkgconf-pkg-config || true; yum install -y ffmpeg-devel"
             container_env: ""
             test_extra: ""
-          # v2 died during host-side metadata generation: the sdist's build
-          # backend invokes cargo before cibuildwheel is even reached, so Rust is
-          # needed on the host as well.
+          # v3: metadata generation on the host died on libclang — mupdfwrap.py
+          # drives clang's Python bindings before cibuildwheel is reached.
           - package: pymupdf
             origin: pypi
-            host_system: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && export PATH=$HOME/.cargo/bin:$PATH"
+            host_system: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
+            host_pip: "libclang"
+            host_env_cmd: 'printf "LIBCLANG_PATH=%s\n" "$(python -c \"import libclang,os;print(os.path.dirname(libclang.__file__))\")"'
             container_system: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
             container_env: "PATH=$HOME/.cargo/bin:$PATH"
             test_extra: ""
-          # v2 got the source but could not find a build frontend: the Python
-          # package of CTranslate2 lives in `python/`, not at the repo root.
+          # v3 reached the compiler and died on missing headers: a shallow clone
+          # without submodules has no spdlog/cpu_features, so CMake cannot
+          # generate ctranslate2/*.h. Source is python/, not the repo root.
           - package: ctranslate2
             origin: git
             git_url: https://github.com/OpenNMT/CTranslate2.git
             git_tag: v4.8.2
+            submodules: "true"
             package_dir: src/ctranslate2/python/
             host_system: ""
+            host_pip: ""
+            host_env_cmd: ""
             container_system: "yum install -y cmake ninja-build"
             container_env: ""
             test_extra: ""
@@ -89,9 +100,18 @@ jobs:
         with:
           python-version: "3.12"   # host interpreter for the cibuildwheel CLI only
 
+      # Host environment is installed in one step and exported through
+      # $GITHUB_PATH/$GITHUB_ENV — `export` inside a step does not reach the
+      # next one, which is how v2's Rust install went missing.
       - name: Host-side system packages
-        if: matrix.host_system != ''
-        run: eval "${{ matrix.host_system }}"
+        if: matrix.host_system != '' || matrix.host_pip != '' || matrix.host_env_cmd != ''
+        run: |
+          set -x
+          [ -n "${{ matrix.host_system }}" ] && eval "${{ matrix.host_system }}"
+          [ -n "${{ matrix.host_pip }}" ]    && python -m pip install ${{ matrix.host_pip }}
+          [ -n "${{ matrix.host_env_cmd }}" ] && eval "${{ matrix.host_env_cmd }}" >> "$GITHUB_ENV"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          true
 
       - name: Prepare cibuildwheel
         run: |
@@ -111,7 +131,11 @@ jobs:
       - name: Fetch source from git
         if: matrix.origin == 'git'
         run: |
-          git clone --depth 1 --branch "${{ matrix.git_tag }}" "${{ matrix.git_url }}" "src/${{ matrix.package }}"
+          if [ "${{ matrix.submodules }}" = "true" ]; then
+            git clone --depth 1 --branch "${{ matrix.git_tag }}" --recurse-submodules --shallow-submodules "${{ matrix.git_url }}" "src/${{ matrix.package }}"
+          else
+            git clone --depth 1 --branch "${{ matrix.git_tag }}" "${{ matrix.git_url }}" "src/${{ matrix.package }}"
+          fi
           ls -la src/
 
       - name: Build the wheel
