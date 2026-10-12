@@ -46,7 +46,11 @@ jobs:
             host_system: ""
             host_pip: ""
             host_env_cmd: ""
-            container_system: "python -m pip install swig ninja"
+            container_system: >-
+              python -m pip install swig ninja;
+              NINJA=$(python -c "import ninja, os; print(os.path.join(os.path.dirname(ninja.__file__), 'data', 'bin', 'ninja'))");
+              cp "$NINJA" /usr/local/bin/ninja 2>/dev/null || true;
+              which ninja || yum install -y ninja-build
             container_env: ""
             test_extra: ""
           # v3: `yum install ffmpeg-devel` → "Unable to find a match". EPEL alone
