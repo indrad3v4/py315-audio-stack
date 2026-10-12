@@ -117,8 +117,11 @@ jobs:
       - name: Host-side env for pymupdf
         if: matrix.package == 'pymupdf'
         run: |
-          LIBCLANG_PATH="$(python -c 'import libclang, os; print(os.path.dirname(libclang.__file__))')"
-          test -e "$LIBCLANG_PATH/libclang.so" || ls "$LIBCLANG_PATH"
+          # The PyPI package named "libclang" installs the *clang* package; its
+          # shared library lives in clang/native/libclang.so and there is no
+          # importable "libclang" module (v5 proved that: ModuleNotFoundError).
+          LIBCLANG_PATH="$(python -c 'import clang, os; print(os.path.join(os.path.dirname(clang.__file__), "native"))')"
+          ls -la "$LIBCLANG_PATH/libclang.so"
           echo "LIBCLANG_PATH=$LIBCLANG_PATH" >> "$GITHUB_ENV"
 
       - name: Prepare cibuildwheel
