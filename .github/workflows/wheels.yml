@@ -139,10 +139,18 @@ jobs:
         run: |
           LIBCLANG_DIR="$(python -c 'import clang, os; print(os.path.join(os.path.dirname(clang.__file__), "native"))')"
           ls -la "$LIBCLANG_DIR/libclang.so"
-          sudo cp "$LIBCLANG_DIR/libclang.so" /usr/local/lib/
-          sudo ldconfig
+          # v7 proved ldconfig is not enough: the file was copied to
+          # /usr/local/lib and the smoke test still could not dlopen it. So put
+          # the library where the runner already looks: the toolcache lib dir is
+          # baked into LD_LIBRARY_PATH for every step of the job, and pip's
+          # isolated build env inherits it, which is exactly what the failing
+          # metadata step needed.
+          LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
+          sudo cp "$LIBCLANG_DIR/libclang.so" "$LIBDIR/libclang.so"
+          echo "LD_LIBRARY_PATH=$LIBDIR:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          export LD_LIBRARY_PATH="$LIBDIR:${LD_LIBRARY_PATH:-}"
           # Proof, not hope: load it with no LIBCLANG_* variable set anywhere.
-          env -u LIBCLANG_PATH -u LIBCLANG_LIBRARY_PATH python -c "import ctypes; ctypes.CDLL('libclang.so'); print('libclang.so resolves system-wide')"
+          env -u LIBCLANG_PATH -u LIBCLANG_LIBRARY_PATH python -c "import ctypes, ctypes.util; ctypes.CDLL('libclang.so'); print('libclang.so resolves', ctypes.util.find_library('clang') or 'via LD_LIBRARY_PATH')"
           echo "LIBCLANG_PATH=$LIBCLANG_DIR" >> "$GITHUB_ENV"
           echo "LIBCLANG_LIBRARY_PATH=$LIBCLANG_DIR" >> "$GITHUB_ENV"
 
