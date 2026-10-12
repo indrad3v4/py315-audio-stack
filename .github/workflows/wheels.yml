@@ -4,11 +4,18 @@ name: cp315 wheels
 # wheel upstream. Artifacts land on every push; tags turn them into release
 # assets that pip can install straight from the release URL.
 #
-# Each matrix entry declares the five things that decide whether a cp315 wheel
-# can exist: where the source comes from (and whether its git submodules are
-# needed), what the *host* needs before metadata generation, what the build
-# container needs, what environment both need, and what the import test needs.
-# Every value is written after reading a failed run — see README "Build results".
+# Each matrix entry declares the things that decide whether a cp315 wheel can
+# exist: where the source comes from (and whether its git submodules are
+# needed), which manylinux image to build in, what the *host* needs before
+# metadata generation, what the build container needs, and what the import test
+# needs. Every value below is written after reading a failed run — the run-by-run
+# diagnosis is in README "Build results".
+#
+# Not in the matrix, on purpose: ctranslate2. Its python/pyproject.toml uses
+# plain setuptools and its setup.py compiles cpp/*.cc while expecting the C++
+# core and its generated headers to exist already — building it needs a CMake
+# step over the whole repo first, then the bindings. That is a dedicated build,
+# not a matrix line.
 
 on:
   push:
@@ -33,19 +40,20 @@ jobs:
           # needs setuptools<81 for the removed pkg_resources.
           - package: webrtcvad
             origin: pypi
+            manylinux_image: ""
             host_system: ""
             host_pip: ""
-            host_env_cmd: ""
             container_system: ""
             container_env: ""
             test_extra: "setuptools<81"
-          # v3 compiled the whole Praat C++ core (still running at ~20 min) after
-          # v2 died on the missing Ninja.
+          # v2: died on missing Ninja. v3: 'pip install ninja' put the binary in
+          # the container python's bin dir, which is not on PATH, so CMake still
+          # refused. v4.1 copies it to /usr/local/bin and verifies with `which`.
           - package: praat-parselmouth
             origin: pypi
+            manylinux_image: ""
             host_system: ""
             host_pip: ""
-            host_env_cmd: ""
             container_system: >-
               python -m pip install swig ninja;
               NINJA=$(python -c "import ninja, os; print(os.path.join(os.path.dirname(ninja.__file__), 'data', 'bin', 'ninja'))");
@@ -53,44 +61,36 @@ jobs:
               which ninja || yum install -y ninja-build
             container_env: ""
             test_extra: ""
-          # v3: `yum install ffmpeg-devel` → "Unable to find a match". EPEL alone
-          # does not carry FFmpeg; the RPM Fusion free repo has to be added
-          # explicitly, and manylinux_2_28 is AlmaLinux 8.
+          # v3: 'yum install ffmpeg-devel' -> no match (EPEL has no FFmpeg).
+          # v4: RPM Fusion fixed that, and the build then failed on real API
+          # gaps: 'av_channel_layout_describe' undeclared, 'AVCodecParameters'
+          # has no member 'ch_layout'. AlmaLinux 8 carries FFmpeg 4.2; PyAV needs
+          # a much newer one, so this target builds in manylinux_2_34 (Alma 9)
+          # with the el9 RPM Fusion repo.
           - package: av
             origin: pypi
+            manylinux_image: manylinux_2_34
             host_system: "sudo apt-get update -qq && sudo apt-get install -y -qq pkg-config libavformat-dev libavcodec-dev libavdevice-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev"
             host_pip: ""
-            host_env_cmd: ""
-            container_system: "yum install -y epel-release || true; yum install -y https://mirrors.rpmfusion.org/free/el/rpmfusion-free-release-8.noarch.rpm || true; yum install -y pkgconf-pkg-config || true; yum install -y ffmpeg-devel"
+            container_system: "yum install -y epel-release || true; yum install -y https://mirrors.rpmfusion.org/free/el/rpmfusion-free-release-9.noarch.rpm || true; yum install -y pkgconf-pkg-config || true; yum install -y ffmpeg-devel"
             container_env: ""
             test_extra: ""
-          # v3: metadata generation on the host died on libclang — mupdfwrap.py
-          # drives clang's Python bindings before cibuildwheel is reached.
+          # v2: cargo runs during host-side metadata generation, not only in the
+          # build container. v3: that step also needs clang's Python bindings
+          # (libclang.so) — mupdfwrap.py drives them. v4.1 proved the matrix
+          # cannot carry a nested-quoted shell expression, hence the dedicated
+          # step below.
           - package: pymupdf
             origin: pypi
+            manylinux_image: ""
             host_system: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
             host_pip: "libclang"
-            host_env_cmd: 'printf "LIBCLANG_PATH=%s\n" "$(python -c \"import libclang,os;print(os.path.dirname(libclang.__file__))\")"'
             container_system: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
             container_env: "PATH=$HOME/.cargo/bin:$PATH"
             test_extra: ""
-          # v3 reached the compiler and died on missing headers: a shallow clone
-          # without submodules has no spdlog/cpu_features, so CMake cannot
-          # generate ctranslate2/*.h. Source is python/, not the repo root.
-          - package: ctranslate2
-            origin: git
-            git_url: https://github.com/OpenNMT/CTranslate2.git
-            git_tag: v4.8.2
-            submodules: "true"
-            package_dir: src/ctranslate2/python/
-            host_system: ""
-            host_pip: ""
-            host_env_cmd: ""
-            container_system: "yum install -y cmake ninja-build"
-            container_env: ""
-            test_extra: ""
     env:
       CIBW_BUILD: cp315-manylinux_x86_64
+      CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.manylinux_image }}
       CIBW_BEFORE_ALL_LINUX: ${{ matrix.container_system }}
       CIBW_ENVIRONMENT_LINUX: ${{ matrix.container_env }}
       CIBW_BEFORE_TEST_LINUX: ${{ matrix.test_extra && format('python -m pip install "{0}"', matrix.test_extra) || 'true' }}
@@ -104,18 +104,22 @@ jobs:
         with:
           python-version: "3.12"   # host interpreter for the cibuildwheel CLI only
 
-      # Host environment is installed in one step and exported through
-      # $GITHUB_PATH/$GITHUB_ENV — `export` inside a step does not reach the
-      # next one, which is how v2's Rust install went missing.
+      # Installed in its own step and exported through $GITHUB_PATH/$GITHUB_ENV:
+      # `export` inside a step does not reach the next one, which is how v2's
+      # Rust install went missing.
       - name: Host-side system packages
-        if: matrix.host_system != '' || matrix.host_pip != '' || matrix.host_env_cmd != ''
+        if: matrix.host_system != '' || matrix.host_pip != ''
         run: |
-          set -x
-          [ -n "${{ matrix.host_system }}" ] && eval "${{ matrix.host_system }}"
-          [ -n "${{ matrix.host_pip }}" ]    && python -m pip install ${{ matrix.host_pip }}
-          [ -n "${{ matrix.host_env_cmd }}" ] && eval "${{ matrix.host_env_cmd }}" >> "$GITHUB_ENV"
+          if [ -n "${{ matrix.host_system }}" ]; then eval "${{ matrix.host_system }}"; fi
+          if [ -n "${{ matrix.host_pip }}" ];    then python -m pip install ${{ matrix.host_pip }}; fi
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          true
+
+      - name: Host-side env for pymupdf
+        if: matrix.package == 'pymupdf'
+        run: |
+          LIBCLANG_PATH="$(python -c 'import libclang, os; print(os.path.dirname(libclang.__file__))')"
+          test -e "$LIBCLANG_PATH/libclang.so" || ls "$LIBCLANG_PATH"
+          echo "LIBCLANG_PATH=$LIBCLANG_PATH" >> "$GITHUB_ENV"
 
       - name: Prepare cibuildwheel
         run: |
@@ -146,7 +150,7 @@ jobs:
         run: |
           TARGET="${{ matrix.package_dir }}"
           [ -n "$TARGET" ] || TARGET=$(ls -d src/*/ | head -1)
-          echo "building $TARGET"
+          echo "building $TARGET in ${CIBW_MANYLINUX_X86_64_IMAGE:-default image}"
           python -m cibuildwheel --output-dir wheelhouse "$TARGET"
 
       - name: Show what we built

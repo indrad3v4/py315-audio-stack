@@ -95,6 +95,25 @@ pip install --find-links https://github.com/<owner>/py315-audio-stack/releases/l
 Per-package system dependencies (SWIG, FFmpeg headers, CMake, Rust) are declared
 in the workflow, not hidden in a wiki.
 
+## Build results — run 4 (workflow v4 / v4.1)
+
+Runs [`38320291548`](https://github.com/indrad3v4/py315-audio-stack/actions/runs/38320291548) and
+[`38320373729`](https://github.com/indrad3v4/py315-audio-stack/actions/runs/38320373729).
+
+| Package | Outcome | Root cause | Fix in workflow v5 |
+|---|---|---|---|
+| `webrtcvad` | ✅ SUCCESS (third run in a row) | — | — |
+| `av` | FFmpeg devel now installs; compile failed on real API gaps | `av_channel_layout_describe` undeclared, `AVCodecParameters` has no member `ch_layout` — AlmaLinux 8 ships FFmpeg **4.2**, PyAV needs much newer | build in `manylinux_2_34` (Alma 9) with the **el9** RPM Fusion repo |
+| `pymupdf` | Rust ✅ and libclang ✅ installed, then the job died | `syntax error near unexpected token 'os.path.dirname'` — a nested-quoted shell expression cannot travel through a matrix variable into `eval` | dedicated env step (no `eval`), `LIBCLANG_PATH` verified before use |
+| `ctranslate2` | same missing headers as v3, **with submodules present** | submodules were never the cause: `python/pyproject.toml` is plain `setuptools` (`build-backend = setuptools.build_meta`) and `setup.py` compiles `cpp/*.cc` while expecting the C++ core and its generated headers to already exist | **removed from the matrix** — a dedicated build: CMake over the whole repo first, then the bindings |
+| `praat-parselmouth` | compiling at the time of writing | — | Ninja now on `PATH` (v4.1) |
+
+`ctranslate2` is the honest boundary of this pipeline: the pattern "fetch sdist →
+cibuildwheel → test" fits projects whose build frontend is self-contained. A
+project that ships wheels only, and whose Python build expects a pre-built C++
+core, needs a written recipe instead. That recipe is work, not a matrix line —
+and pretending otherwise would have produced a green badge on a broken wheel.
+
 ## Build results — run 3 (workflow v3)
 
 Run [`38317992784`](https://github.com/indrad3v4/py315-audio-stack/actions/runs/38317992784).
