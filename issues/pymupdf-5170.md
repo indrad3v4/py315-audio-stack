@@ -36,3 +36,5 @@ import on a real 3.15 interpreter — not the presence of a tag in the filename.
 > cannot be fixed in any `.i` file. Replacing the emitted call with the PyUnicode form
 > where the generator is written is the change that makes 3.15 build; patching the
 > generated output by hand does not survive regeneration.
+
+<!-- trigger: new PR activity after the Prelint repository access change -->
