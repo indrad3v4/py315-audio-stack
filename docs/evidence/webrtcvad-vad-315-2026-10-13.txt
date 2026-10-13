@@ -1,0 +1,65 @@
+ПРОГОН webrtcvad НА CPython 3.15.0 — 2026-10-13
+==================================================
+venv: /root/.hermes/py315-flight/bin/python
+Команда воспроизведения (сокращённо):
+  PY=/root/.hermes/py315-flight/bin/python
+  git apply -p1 patches/webrtcvad-no-pkg-resources.patch  # в распакованном колесе
+  "$PY" docs/evidence/webrtcvad-vad-315-2026-10-13.py
+
+--- 0. Интерпретатор и окружение ---
+interpreter: 3.15.0 (main, Oct  9 2026, 15:24:40) [Clang 22.1.3 ]
+pkg_resources importable: False
+webrtcvad importable spec: True
+
+--- 1. БАЗА: колесо v0.3.0 как оно собрано (безусловный import pkg_resources) ---
+восстановлено исходное колесо v0.3.0
+ModuleNotFoundError: No module named 'pkg_resources'
+
+--- 2. Пересборка колеса из патча ---
+исходное колесо: /root/.hermes/py315/v18/wheel-webrtcvad-cp315/webrtcvad-2.0.10-cp315-cp315-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
+Checking patch webrtcvad.py...
+Applied patch webrtcvad.py cleanly.
+строка 1 после патча: try:
+OK: безусловного import pkg_resources нет
+RECORD перезаписан: 25 строк
+собрано колесо: /tmp/vadproof/wheels/webrtcvad-2.0.10-cp315-cp315-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
+
+--- 3. Установка пересобранного колеса в существующий venv ---
+Using Python 3.15.0 environment at: /root/.hermes/py315-flight
+Resolved 1 package in 1ms
+Prepared 1 package in 13ms
+Uninstalled 1 package in 0.29ms
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 1 package in 1ms
+ - webrtcvad==2.0.10 (from file:///root/.hermes/py315/v18/wheel-webrtcvad-cp315/webrtcvad-2.0.10-cp315-cp315-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl)
+ + webrtcvad==2.0.10 (from file:///tmp/vadproof/wheels/webrtcvad-2.0.10-cp315-cp315-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl)
+uv pip install: OK
+установленный webrtcvad.py (1..10):
+try:
+    # Python 3.8+
+    from importlib.metadata import PackageNotFoundError, version
+except Exception:  # pragma: no cover
+    # Backport for Python < 3.8
+    from importlib_metadata import PackageNotFoundError, version
+
+import _webrtcvad
+
+__author__ = "John Wiseman jjwiseman@gmail.com"
+
+--- 4. РЕАЛЬНЫЙ VAD-ПРОГОН ---
+interpreter: 3.15.0 (main, Oct  9 2026, 15:24:40) [Clang 22.1.3 ]
+pkg_resources importable: False
+webrtcvad module: /root/.hermes/py315-flight/lib/python3.15/site-packages/webrtcvad.py
+webrtcvad.__version__: 2.0.10
+wrote /tmp/vadproof/vad-315.wav | samples: 17600 | order: silence/tone/noise/silence
+frame 10 ms (160 samples): 00000000000000000000000000000011111110000000000000000000000011111111111111111111111111111111111111110000000000 speech=47/110
+frame 20 ms (320 samples): 0000000000000001111000000000001111111111111111111110000 speech=25/55
+frame 30 ms (480 samples): 000000000011100000001111111111111100 speech=17/36
+valid_rate_and_frame_length(16000, 480): True
+VAD_OK True
+proof exit: 0
+
+==================================================
+ИТОГ: import без pkg_resources + реальный VAD на 16 кГц, кадры 10/20/30 мс

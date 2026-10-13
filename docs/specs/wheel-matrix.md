@@ -19,7 +19,9 @@
 - Версия CPython параметризована: `CIBW_BUILD` и имена джобов/артефактов выводятся из
   `vars.CP_MINOR || '3.15'`; `workflow_dispatch` принимает `minor=`.
 - Прикрепление колёс к релизу — отдельный джоб, который ждёт тег, а не push.
-- `webrtcvad` требует `setuptools < 81`; более новые версии ломают сборку.
+- `webrtcvad`: патч `patches/webrtcvad-no-pkg-resources.patch` убирает безусловный
+  `import pkg_resources`; версия берётся из `importlib.metadata`. `setuptools` не
+  требуется.
 - `pymupdf`: генератор SWIG падает на `PyString_FromString`; сборка читает каталог из
   `PYMUPDF_SETUP_MUPDF_BUILD`, а не из `_TGZ`.
 - `libclang`: пакет с этим именем ставит модуль `clang`; `LIBCLANG_PATH` указывает на
@@ -28,7 +30,7 @@
 ## Правила pull request
 
 - PR к `py-webrtcvad` трогает ровно один файл: `webrtcvad.py`.
-- Никаких новых рантайм-зависимостей: `get_distribution` берётся из того же `pkg_resources`.
+- Никаких новых рантайм-зависимостей: версия берётся из стандартной библиотеки (`importlib.metadata`).
 - Каждый новый импорт обязан существовать в Python 2.7.
 - Каждое утверждение в PR подкреплено выполненной командой-доказательством.
 - Запрещена косметика: строки, не объясняющие баг, не трогаем.

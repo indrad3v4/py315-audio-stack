@@ -53,12 +53,13 @@ jobs:
           # A flight on 3.15.0 proved the wheel cannot import at all: setuptools
           # >= 81 no longer ships pkg_resources, and installing the latest
           # setuptools does not bring it back. So the source is patched before
-          # the build, and the test env is kept clean: the proof is an import
-          # with pkg_resources provably absent (D9).
+          # the build with patches/webrtcvad-no-pkg-resources.patch (the distro
+          # form; cf. upstream wiseman/py-webrtcvad#96), and the test env is kept
+          # clean: the proof is an import with pkg_resources provably absent (D9).
           - package: webrtcvad
             origin: pypi
             fetch_mode: tarball
-            patches: webrtcvad-pkg-resources
+            patches: webrtcvad-no-pkg-resources
             manylinux_image: ""
             host_system: ""
             host_pip: ""
@@ -297,23 +298,31 @@ jobs:
           ls -la src/
 
       # D9, from the 3.15 flight: the wheel must import with no pkg_resources
-      # anywhere. The patch step rewrites the source and installs this override,
-      # so the test itself fails if a crutch ever creeps back into the env.
+      # anywhere. patches/webrtcvad-no-pkg-resources.patch removes the mandatory
+      # import at the source — the distro form (importlib.metadata.version, see
+      # pypa/setuptools#3085 and wiseman/py-webrtcvad#96) — the test env stays
+      # clean, and the test itself fails if a crutch ever creeps back in. The gate
+      # below proves, by grep and exit code, that the mandatory import is gone.
       - name: Patch webrtcvad — no mandatory pkg_resources import
-        if: matrix.patches == 'webrtcvad-pkg-resources'
+        if: matrix.patches == 'webrtcvad-no-pkg-resources'
         run: |
           set -euo pipefail
-          F=$(ls src/webrtcvad*/webrtcvad.py)
+          D=$(ls -d src/webrtcvad*/ | head -1); D=${D%/}
+          F="$D/webrtcvad.py"
           echo "target: $F"
           before=$(grep -c "pkg_resources" "$F" || true)
-          sed -i 's/^import pkg_resources$/try:\n    from pkg_resources import get_distribution\nexcept ImportError:  # setuptools >= 81 no longer ships it\n    get_distribution = None/' "$F"
-          sed -i "s/^__version__ = pkg_resources.get_distribution('webrtcvad').version$/__version__ = get_distribution('webrtcvad').version if get_distribution else 'unknown'/" "$F"
-          left=$(grep -c "pkg_resources" "$F" || true)
-          echo "mentions of pkg_resources: $before -> $left"
-          sed -n '1,12p' "$F"
-          # The import must be gone unconditionally, and the fallback must exist.
-          ! grep -q "^import pkg_resources$" "$F"
-          grep -q "get_distribution" "$F"
+          # git apply resolves paths against the repo root, so --directory points
+          # the hunk at the extracted tree whatever the tarball is named.
+          git apply -p1 --directory="$D" --verbose "$GITHUB_WORKSPACE/patches/webrtcvad-no-pkg-resources.patch"
+          after=$(grep -c "pkg_resources" "$F" || true)
+          echo "mentions of pkg_resources: $before -> $after"
+          sed -n '1,16p' "$F"
+          # Gate with an explicit exit code: a mandatory import must not survive.
+          if grep -qE '^[[:space:]]*import pkg_resources[[:space:]]*$' "$F"; then
+            echo "FAIL: mandatory 'import pkg_resources' still present"; exit 1
+          fi
+          grep -q "from importlib.metadata import" "$F"
+          echo "OK: no mandatory pkg_resources import remains"
           printf 'CIBW_TEST_COMMAND=%s\n' "python -c \"import importlib.util, sys, webrtcvad; assert importlib.util.find_spec('pkg_resources') is None, 'pkg_resources present in the test env'; print('IMPORT OK without pkg_resources', sys.version.split()[0])\"" >> "$GITHUB_ENV"
           grep -h CIBW_TEST_COMMAND "$GITHUB_ENV"
 
