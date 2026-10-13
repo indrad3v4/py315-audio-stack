@@ -229,7 +229,12 @@ jobs:
           echo "host path:      $(pwd)/dl/${NAME}.tar.gz"
           # the container sees the repo at /project:
           echo "PYMUPDF_SETUP_MUPDF_TGZ=$(pwd)/dl/${NAME}.tar.gz" >> "$GITHUB_ENV"
-          echo "CIBW_ENVIRONMENT_LINUX=${{ matrix.container_env }} PYMUPDF_SETUP_MUPDF_TGZ=/project/dl/${NAME}.tar.gz" >> "$GITHUB_ENV"
+          # Single quotes matter: CIBW_ENVIRONMENT_LINUX is a *container-side*
+          # string. Unquoted, the host shell expands $HOME/$PATH here and the
+          # container gets the runner's PATH -- which broke `which python` in v16.
+          printf 'CIBW_ENVIRONMENT_LINUX=%s PYMUPDF_SETUP_MUPDF_TGZ=/project/dl/%s.tar.gz\n' \
+            '${{ matrix.container_env }}' "${NAME}" >> "$GITHUB_ENV"
+          grep -h CIBW_ENVIRONMENT_LINUX "$GITHUB_ENV"
 
       - name: Apply cp315 source patches
         if: matrix.patches == 'pymupdf-cp315'
