@@ -1,0 +1,52 @@
+name: watch CPython
+
+# The part of the loop that has no person in it. python.org publishes a release;
+# this job notices it, records it, and acts:
+#
+#   * new patch of a tracked minor (3.15.0 -> 3.15.1): the wheel tag does not
+#     change, so nothing is rebuilt. The state file records what was seen.
+#   * new minor (3.16): an issue is opened and the wheel workflow is dispatched
+#     for it. Building is automatic; publishing still requires the wheel to
+#     import on a live interpreter, so a bad build simply never becomes a tag.
+#
+# Decisions live in .github/watch_cpython.py, which is stdlib-only and can be run
+# locally with --dry-run. TRACKED_MINORS is a repo variable, default "3.15".
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+concurrency:
+  group: watch-cpython
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read python.org and act on what changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRACKED_MINORS: ${{ vars.TRACKED_MINORS || '3.15' }}
+        run: python3 .github/watch_cpython.py
+
+      - name: Commit the state, if it moved
+        run: |
+          git config user.name "cpython-watch"
+          git config user.email "cpython-watch@users.noreply.github.com"
+          git add state/
+          if git diff --cached --quiet; then
+            echo "state unchanged - nothing to commit"
+          else
+            git commit -m "state: python.org snapshot"
+            git push
+          fi

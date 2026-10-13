@@ -24,15 +24,23 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths-ignore:
+      - "state/**"
+      - "README.md"
   pull_request:
   workflow_dispatch:
+    inputs:
+      minor:
+        description: "CPython minor to build for, e.g. 3.16 (defaults to the repo variable CP_MINOR, then 3.15)"
+        required: false
+        type: string
 
 permissions:
   contents: write
 
 jobs:
   wheels:
-    name: ${{ matrix.package }} (cp315)
+    name: ${{ matrix.package }} (cp${{ replace(inputs.minor || vars.CP_MINOR || '3.15', '.', '') }})
     runs-on: ubuntu-latest
     timeout-minutes: 150
     strategy:
@@ -118,7 +126,7 @@ jobs:
             cflags: "-DPyString_FromString=PyUnicode_FromString -DPyString_FromStringAndSize=PyUnicode_FromStringAndSize"
             test_extra: ""
     env:
-      CIBW_BUILD: cp315-manylinux_x86_64
+      CIBW_BUILD: cp${{ replace(inputs.minor || vars.CP_MINOR || '3.15', '.', '') }}-manylinux_x86_64
       PYMUPDF_SETUP_PY_LIMITED_API: ${{ matrix.limited_api_off }}
       CFLAGS: ${{ matrix.cflags }}
       CXXFLAGS: ${{ matrix.cflags }}
@@ -298,7 +306,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: wheel-${{ matrix.package }}-cp315
+          name: wheel-${{ matrix.package }}-cp${{ replace(inputs.minor || vars.CP_MINOR || '3.15', '.', '') }}
           path: wheelhouse/*.whl
           if-no-files-found: warn
 
