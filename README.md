@@ -129,7 +129,7 @@ Every failure below looked like a package problem and was not one:
 | container: `cibuildwheel: Command ['which', 'python'] failed` | the container env string was appended with `echo` in double quotes, so `$HOME`/`$PATH` expanded **on the runner** and the host PATH replaced the image's | write the container-side string single-quoted, and print it to the log |
 | `praat-parselmouth`: `CMake Error: CMAKE_MAKE_PROGRAM` | the pip `ninja` wheel landed off-PATH and the shell-quoted copy was mangled by cibuildwheel's `sh -c` wrapper | `yum install -y epel-release ninja-build` — no quoting, no PATH games |
 
-Two rules earned the hard way, both worth more than the wheels:
+Three rules earned the hard way, worth more than the wheels:
 
 1. **Environment variables are not a transport.** Rust, FFmpeg, Ninja and
    libclang all failed at some point because a variable was set in the wrong
