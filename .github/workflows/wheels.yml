@@ -214,12 +214,14 @@ jobs:
           tar -xzf dl/mupdf-src.tar.gz -C mu
           DIR=$(ls -d mu/*/ | head -1); DIR=${DIR%/}
           NAME=$(basename "$DIR")
-          before=$(grep -rn "PyString_" "$DIR" | wc -l)
+          before=$( (grep -rn "PyString_" "$DIR" || true) | wc -l )
           grep -rl "PyString_" "$DIR" | while read -r f; do
             sed -i 's/\bPyString_FromStringAndSize\b/PyUnicode_AsUTF8AndSize/g; s/\bPyString_AsStringAndSize\b/PyUnicode_AsUTF8AndSize/g; s/\bPyString_AsString\b/PyUnicode_AsUTF8/g; s/\bPyString_FromString\b/PyUnicode_FromString/g' "$f"
             echo "patched: $f"
           done
-          left=$(grep -rn "PyString_" "$DIR" | wc -l)
+          # grep exits 1 when it finds nothing, and `set -e` plus pipefail
+          # would then kill the step that exists to prove nothing is left.
+          left=$( (grep -rn "PyString_" "$DIR" || true) | wc -l )
           echo "PyString_* in the MuPDF tree: $before -> $left"
           test "$left" -eq 0
           tar -czf "dl/${NAME}.tar.gz" -C mu "$NAME"
