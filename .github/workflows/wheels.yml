@@ -203,9 +203,11 @@ jobs:
           # a Python-2 alias that CPython 3.15 headers no longer declare. SWIG
           # regenerates the wrapper from these files, so the alias has to be
           # mapped in the source itself (v11/v12 proved CFLAGS cannot help).
-          before=$(grep -rc "PyString_FromString" src/ | grep -v ':0' | wc -l)
-          echo "файлы з PyString_FromString: $before"
-          grep -rl "PyString_FromString" src/ | while read -r f; do
+          before=$(grep -rn "PyString_" src/ | wc -l)
+          echo "згадак PyString_* да патча: $before"
+          # every file with any PyString_* alias, not just the FromString ones:
+          # helper-xobject.i:140 calls PyString_AsString.
+          grep -rl "PyString_" src/ | while read -r f; do
             sed -i 's/\bPyString_AsString\b/PyUnicode_AsUTF8/g; s/\bPyString_FromStringAndSize\b/PyUnicode_AsUTF8AndSize/g; s/\bPyString_FromString\b/PyUnicode_FromString/g' "$f"
             echo "patched: $f"
           done
