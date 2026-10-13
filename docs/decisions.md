@@ -73,3 +73,18 @@ to the thing it watches.
 
 They do not describe code style, test coverage, or architecture. Prelint reviews the
 product layer; the linters and the reviewers cover the rest.
+
+## D8 — libclang: имя пакета ≠ имя модуля (проверено 2026-10-13)
+
+**Решение.** В шаге установки инструментов CI не выводить путь из импортируемого
+модуля `libclang`: пакет с этим именем на PyPI ставит модуль `clang`. Устанавливать
+`libclang`, а `LIBCLANG_PATH` указывать на `clang/native` и до записи в
+`GITHUB_ENV` доказывать наличие файла командой `ls -la "$LIBCLANG_PATH/libclang.so"`.
+
+**Почему.** Версия v5 выводила путь из модуля, которого не существует, — шаг падал
+с `ModuleNotFoundError` после успешной установки пакета. Проверено на колесе
+`libclang-18.1.1-py2.py3-none-manylinux2010_x86_64.whl`, где лежат `clang/__init__.py`
+и `clang/native/libclang.so`.
+
+**Результат.** Четыре колеса cp315 собираются зелёными: run 38411806350 на `main`,
+run 38414571512 на ветке `draft/pymupdf-issue-5170`.
