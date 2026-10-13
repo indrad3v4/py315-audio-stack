@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "exclude_authors": ["dependabot[bot]", "renovate[bot]", "github-actions[bot]", "snyk-bot"],
+  "ignore_patterns": ["state/**", "logs/**", "*.log", "*.jsonl"],
+  "context_files": ["README.md", "docs/decisions.md"],
+  "rules": [
+    {
+      "name": "Evidence over claims",
+      "description": "Every fix in this repository must ship with the exact command that proves it, and the report must name what was NOT executed. A run that only shows a green job without loading the artifact proves nothing."
+    },
+    {
+      "name": "No environment variable as transport",
+      "description": "Do not pass build inputs between layers (host step, container, job level) through environment variables. Set them in the layer where the failing step can already read them; a variable set in the wrong layer is the single most common failure here."
+    },
+    {
+      "name": "A gate must survive its own success",
+      "description": "A check whose success condition is 'nothing found' must not fail under set -e once it works, and a check must write its verdict where the next layer reads it."
+    },
+    {
+      "name": "No prefix already inside the variable",
+      "description": "A tag or identifier stored with its own prefix must never be given a second prefix. `cp` + a variable already holding `cp315` builds `cpcp315`, and cibuildwheel silently finds no matching build identifiers."
+    },
+    {
+      "name": "Compute tags in code, not in YAML",
+      "description": "GitHub expressions have no replace(). Never derive a version or tag inside a workflow expression; compute it in the script that dispatches the build."
+    },
+    {
+      "name": "Build after your feature landed",
+      "description": "A package can only ship a cp tag for a CPython minor that exists in the interpreter matrix. Never add a wheel target ahead of the interpreter release."
+    },
+    {
+      "name": "Only stdlib in the watcher",
+      "description": "The CPython watcher must run on the GitHub runner's bare interpreter with no extra installation, so it stays stdlib-only and must keep working with --dry-run."
+    }
+  ]
+}
