@@ -73,3 +73,55 @@ to the thing it watches.
 
 They do not describe code style, test coverage, or architecture. Prelint reviews the
 product layer; the linters and the reviewers cover the rest.
+
+## D8 — libclang: имя пакета ≠ имя модуля (проверено 2026-10-13)
+
+**Решение.** В шаге установки инструментов CI не выводить путь из импортируемого
+модуля `libclang`: пакет с этим именем на PyPI ставит модуль `clang`. Устанавливать
+`libclang`, а `LIBCLANG_PATH` указывать на `clang/native` и до записи в
+`GITHUB_ENV` доказывать наличие файла командой `ls -la "$LIBCLANG_PATH/libclang.so"`.
+
+**Почему.** Версия v5 выводила путь из модуля, которого не существует, — шаг падал
+с `ModuleNotFoundError` после успешной установки пакета. Проверено на колесе
+`libclang-18.1.1-py2.py3-none-manylinux2010_x86_64.whl`, где лежат `clang/__init__.py`
+и `clang/native/libclang.so`.
+
+**Результат.** Четыре колеса cp315 собираются зелёными: run 38411806350 на `main`,
+run 38414571512 на ветке `draft/pymupdf-issue-5170`.
+
+**Поправка (2026-10-13, снимает конфликт с D2).** Запись `LIBCLANG_PATH` в
+`GITHUB_ENV` — не механизм передачи, и как канал она не работает: v7 доказал, что
+переменная не доходит до изолированного сборочного окружения pip. Работает другое:
+`libclang.so` копируется в `LIBDIR` (`sysconfig.get_config_var("LIBDIR")`), а
+`LD_LIBRARY_PATH` на этот каталог наследуется контейнером. `LIBCLANG_PATH`
+остаётся вторичным и нигде не используется как транспорт — это и есть D2: путь в
+файловой системе вместо переменной между слоями.
+
+## D9 — Колесо не должно требовать pkg_resources (проверено 2026-10-13)
+
+**Решение.** Ни одно собранное здесь колесо не импортирует `pkg_resources`
+безусловно. `webrtcvad` собирается из tarball с патчем
+`patches/webrtcvad-no-pkg-resources.patch` — форма взята у дистрибутивов
+(NixOS/nixpkgs, void-linux/void-packages), версия берётся из
+`importlib.metadata.version`, при отсутствии метаданных — `"unknown"`. Тестовое
+окружение намеренно остаётся чистым, и тест-команда утверждает, что
+`pkg_resources` отсутствует, — то есть костыль в тесте больше не может
+замаскировать нерабочее колесо.
+
+**Почему.** `setuptools >= 81` больше не поставляет `pkg_resources`, а на CPython
+3.15 его нет даже после установки свежего setuptools (проверено). Пролёт на
+3.15.0 (лог: `docs/evidence/flight-315-2026-10-13.txt`) дал
+`ModuleNotFoundError: No module named 'pkg_resources'` на `import webrtcvad`, при
+том что три остальных колеса полетели: `pymupdf` вынул текст из PDF, `av`
+декодировал WAV (pcm_s16le, 16 кГц), `praat-parselmouth` дал F0 220.0 Гц на
+сигнале 220 Гц. Прежнее «зелёное» состояние держалось на
+`CIBW_BEFORE_TEST_LINUX: pip install "setuptools<81"` — колесо проверялось в
+окружении, которого у пользователя не будет.
+
+**Результат.** Утверждение README «import works with `setuptools<81` installed»
+отменено как неверное. Патч наложен и проверен на 3.15.0
+(`docs/evidence/webrtcvad-vad-315-2026-10-13.txt`): `import webrtcvad` проходит
+в окружении без `pkg_resources`, VAD различает тишину/тон на WAV 16 кГц.
+Шаг CI `Patch webrtcvad` применяет файл патча через `git apply` и падает, если
+безусловный `import pkg_resources` остался (`grep` + exit-код); колесо
+пересобирается из патча в v0.3.1.

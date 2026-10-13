@@ -1,0 +1,43 @@
+ПРОЛЁТ НА CPython 3.15.0 — 2026-10-13
+==================================================
+Как: uv python install 3.15 → venv → четыре колеса из Release v0.3.0 → реальный прогон.
+Команда воспроизведения:
+  uv python install 3.15
+  uv venv --python 3.15 /tmp/f && uv pip install --python /tmp/f/bin/python numpy /tmp/wheels315/*.whl
+  /tmp/f/bin/python flight_proof.py
+
+Интерпретатор: 3.15.0 (main, Oct  9 2026, 15:24:40) [Clang 22.1.3]
+pkg_resources в окружении: False
+--------------------------------------------------
+[1] webrtcvad
+  ПАДЕНИЕ: ModuleNotFoundError No module named 'pkg_resources'
+  WEBRTCVAD_FAIL
+--------------------------------------------------
+[2] pymupdf (fitz)
+  warning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
+  извлечённый текст: 'Prelint review, 3.15 flight'
+  PYMUPDF_OK True
+--------------------------------------------------
+[3] av
+  кодек: pcm_s16le | частота: 16000 | кадров: 16
+  AV_OK True
+--------------------------------------------------
+[4] praat-parselmouth
+  версия: 0.4.7 | средний F0: 220.0 Гц
+  PARSELMOUTH_OK True
+==================================================
+СВОД: webrtcvad=FAIL(ModuleNotFoundError) | pymupdf=OK | av=OK | parselmouth=OK
+
+Вторая проверка — «а если поставить setuptools, вдруг вернётся pkg_resources»:
+  после setuptools: pkg_resources = False
+  ЭТАП2: FAIL ModuleNotFoundError No module named 'pkg_resources'
+  выполнено на 3.15.0
+
+ВЫВОД
+Три колеса из четырёх летят на 3.15. webrtcvad не летит ни при каких условиях:
+setuptools >= 81 больше не поставляет pkg_resources, и установка свежего
+setuptools его не возвращает. Опубликованное колесо v0.3.0 начинается строкой
+`import pkg_resources` — то есть утверждение README «import works with
+setuptools<81 installed» было неполным: оно описывало окружение, которого у
+пользователя не будет. Исправление — патч исходника до сборки (D9) плюс тест,
+который падает, если pkg_resources окажется в тестовом окружении.

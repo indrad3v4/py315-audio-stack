@@ -1,0 +1,22 @@
+# webrtcvad: не імпартаваць pkg_resources безумоўна
+# падстава: setuptools>=81 ужо не змяшчае pkg_resources -> import webrtcvad падае
+
+--- a/webrtcvad.py
++++ b/webrtcvad.py
+@@ -1,11 +1,14 @@
+-import pkg_resources
++try:
++    from pkg_resources import get_distribution
++except ImportError:  # setuptools >= 81 no longer ships pkg_resources
++    get_distribution = None
+ 
+ import _webrtcvad
+ 
+ __author__ = "John Wiseman jjwiseman@gmail.com"
+ __copyright__ = "Copyright (C) 2016 John Wiseman"
+ __license__ = "MIT"
+-__version__ = pkg_resources.get_distribution('webrtcvad').version
++__version__ = get_distribution('webrtcvad').version if get_distribution else 'unknown'
+ 
+ 
+ class Vad(object):

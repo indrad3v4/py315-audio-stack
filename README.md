@@ -41,7 +41,7 @@ verdicts: `wheel` · `wheel+pure` · `py3-wheel` · `pure` · `no-wheel-for-you`
 | av | 19.0.1 | ✅ cp315 wheel — built here, [v0.3.0](https://github.com/indrad3v4/py315-audio-stack/releases/tag/v0.3.0) |
 | praat-parselmouth | 0.4.7 | ✅ cp315 wheel — built here, v0.3.0 |
 | pymupdf | 1.28.2 | ✅ cp315 abi3 wheel — built here, v0.3.0 |
-| webrtcvad | 2.0.10 | ✅ cp315 wheel — built here, v0.3.0 (sdist only upstream; imports `pkg_resources`, so it wants `setuptools<81`) |
+| webrtcvad | 2.0.10 | ✅ cp315 wheel — built here from a patched tarball: строка 1 больше не `import pkg_resources`, версия берётся из `importlib.metadata` (`patches/webrtcvad-no-pkg-resources.patch`). Доказательство на 3.15 — `docs/evidence/webrtcvad-vad-315-2026-10-13.txt` |
 | ctranslate2 | 4.8.2 | ⚠️ wheels only up to cp314 — buildable, not attempted |
 | onnxruntime | 1.31.0 | ⛔ upstream work |
 | torch | 2.14.1 | ⛔ upstream work |
@@ -116,12 +116,15 @@ gates it: the tag exists only if all four say `IMPORT OK`.
 |---|---|---|---|
 | `av` | `av-19.0.1-cp315-cp315-manylinux_2_34_x86_64.whl` | 23.5 MB | `import av` → 19.0.1, links libavcodec 63.1.102 (FFmpeg 9) |
 | `praat-parselmouth` | `praat_parselmouth-0.4.7-cp315-cp315-manylinux…whl` | 10.9 MB | `import parselmouth` → 0.4.7 |
-| `webrtcvad` | `webrtcvad-2.0.10-cp315-cp315-manylinux…whl` | 86 KB | import works with `setuptools<81` installed |
+| `webrtcvad` | `webrtcvad-2.0.10-cp315-cp315-manylinux…whl` | 86 KB | rebuilt from `patches/webrtcvad-no-pkg-resources.patch`: imports on 3.15.0 with **no** `pkg_resources` and runs a real VAD (2026-10-13). v0.3.0's wrapper still fails, so this is re-cut as v0.3.1 |
 | `pymupdf` | `pymupdf-1.28.2-cp315-abi3-manylinux…whl` | 25.7 MB | `import pymupdf` → 1.28.2 (abi3 wheel) |
 
-`webrtcvad` imports `pkg_resources` at import time and never declares it, so it
-needs `setuptools<81` in the environment: setuptools 81+ no longer ships
-`pkg_resources` at all. That is upstream's wart, not the wheel's.
+`webrtcvad` 2.0.10 imported `pkg_resources` at import time and never declared it,
+and setuptools 81+ no longer ships `pkg_resources` at all — so on 3.15 `import
+webrtcvad` raised `ModuleNotFoundError` with any modern setuptools. That was
+upstream's wart; the wheel now carries a patched `webrtcvad.py`
+(`patches/webrtcvad-no-pkg-resources.patch`, the distro form from NixOS/Void:
+`importlib.metadata.version`), so it needs neither `setuptools` nor a crutch.
 
 `pip install <wheel-url>` from the release is the intended path; the wheels are
 `cp315-cp315`, i.e. version-specific, because upstream ships none.
@@ -285,8 +288,9 @@ its own log, not guessed. Five jobs, five different reasons, one shared lesson:
 The most useful result is `webrtcvad`: **its cp315 wheel exists and works; the
 library itself is what breaks.** `pkg_resources` was removed from setuptools in
 2025, so the 2018-era code cannot import on a modern environment regardless of
-Python version. A cp315 wheel is not the fix — the fix is dropping the
-`pkg_resources` import (or using a maintained fork).
+Python version. A cp315 wheel is not the fix — dropping the `pkg_resources`
+import is, which the build now does with `patches/webrtcvad-no-pkg-resources.patch`
+(D9). Rebuilding the installed file on 3.15 is what made the fix provable.
 
 ## Substitutions when a build is not worth it
 

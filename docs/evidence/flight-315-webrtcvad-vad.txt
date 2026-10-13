@@ -1,0 +1,27 @@
+=== batch1 / step 6 evidence: webrtcvad on CPython 3.15.0 (patched wrapper) ===
+date(UTC) : 2026-10-13T21:02:49Z
+command   : /tmp/batch1/venv/bin/python docs/evidence/flight-315-webrtcvad-vad.py
+repo      : /tmp/py315-scan  branch: draft/pymupdf-issue-5170
+patch     : patches/webrtcvad-no-pkg-resources.patch (sha256 4773b8be74efd6c1696043e473765e08af2791f7542c48eaaed4f642f44eddb1)
+
+interpreter      : 3.15.0 (main, Oct  9 2026, 15:24:40) [Clang 22.1.3 ]
+pkg_resources    : None
+webrtcvad module : /tmp/batch1/venv/lib/python3.15/site-packages/webrtcvad.py
+webrtcvad version: 2.0.10
+WAV              : /tmp/batch1/vad-315-batch1.wav 64044 bytes
+WAV sha256       : e52ff1bea7ae9a24c6194cb64c4c8d9cb8e78b294561a25158c5bdeffbeffd8a
+signal           : 1.0 s AM 440 Hz tone (amp 0.5, 4 Hz env) + 1.0 s silence | 16 kHz mono s16 LE
+
+frame(ms) | frames_total | speech_1st_s | speech_2nd_s
+------------------------------------------------------
+       10 |          200 |          100 |            7
+          | 2nd-second flags: 1111111000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+       20 |          100 |           50 |            6
+          | 2nd-second flags: 11111100000000000000000000000000000000000000000000
+       30 |           66 |           33 |            4
+          | 2nd-second flags: 111100000000000000000000000000000
+
+check speech_1st_s > 0      : True
+check speech_2nd_s ~ 0 (<=150 ms): True
+VAD_OK: True
+EXIT=0

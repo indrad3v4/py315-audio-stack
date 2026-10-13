@@ -1,0 +1,42 @@
+# webrtcvad: drop the mandatory pkg_resources import.
+#
+# pkg_resources is deprecated upstream and setuptools >= 81 no longer ships it
+# (https://github.com/pypa/setuptools/issues/3085). On CPython 3.15 it is absent
+# even after installing the latest setuptools, so `import webrtcvad` dies with
+# ModuleNotFoundError before any VAD code can run.
+#
+# Form taken from the distro patches, not invented here:
+#   NixOS/nixpkgs            pkgs/development/python-modules/webrtcvad/no-pkg-resources.patch
+#   void-linux/void-packages srcpkgs/python3-webrtcvad/patches/drop-pkg_resources.patch
+# Upstream: https://github.com/wiseman/py-webrtcvad/pull/96
+#   ("replace pkg_resources with importlib.metadata for version lookup")
+#
+# The version now comes from the standard library. If the distribution metadata
+# is missing (running from a source tree) __version__ degrades to "unknown"
+# rather than failing at import time.
+diff --git a/webrtcvad.py b/webrtcvad.py
+index 55f7664..5d9ce3d 100644
+--- a/webrtcvad.py
++++ b/webrtcvad.py
+@@ -1,11 +1,19 @@
+-import pkg_resources
++try:
++    # Python 3.8+
++    from importlib.metadata import PackageNotFoundError, version
++except Exception:  # pragma: no cover
++    # Backport for Python < 3.8
++    from importlib_metadata import PackageNotFoundError, version
+ 
+ import _webrtcvad
+ 
+ __author__ = "John Wiseman jjwiseman@gmail.com"
+ __copyright__ = "Copyright (C) 2016 John Wiseman"
+ __license__ = "MIT"
+-__version__ = pkg_resources.get_distribution('webrtcvad').version
++try:
++    __version__ = version("webrtcvad")
++except PackageNotFoundError:  # source tree without installed metadata
++    __version__ = "unknown"
+ 
+ 
+ class Vad(object):
