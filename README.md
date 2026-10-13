@@ -38,18 +38,20 @@ verdicts: `wheel` · `wheel+pure` · `py3-wheel` · `pure` · `no-wheel-for-you`
 | fal-client | 1.0.3 | ✅ pure-python |
 | boto3 | 1.43.112 | ✅ pure-python |
 | faster-whisper | 1.2.1 | ✅ pure-python (but needs ctranslate2 below) |
-| av | 19.0.1 | ⚠️ wheels only for cp312, cp314 |
-| praat-parselmouth | 0.4.7 | ⚠️ wheels only up to cp314 |
-| pymupdf | 1.28.2 | ⚠️ wheels only for cp310/313/314 |
-| ctranslate2 | 4.8.2 | ⚠️ wheels only up to cp314 |
+| av | 19.0.1 | ✅ cp315 wheel — built here, [v0.3.0](https://github.com/indrad3v4/py315-audio-stack/releases/tag/v0.3.0) |
+| praat-parselmouth | 0.4.7 | ✅ cp315 wheel — built here, v0.3.0 |
+| pymupdf | 1.28.2 | ✅ cp315 abi3 wheel — built here, v0.3.0 |
+| webrtcvad | 2.0.10 | ✅ cp315 wheel — built here, v0.3.0 (sdist only upstream; imports `pkg_resources`, so it wants `setuptools<81`) |
+| ctranslate2 | 4.8.2 | ⚠️ wheels only up to cp314 — buildable, not attempted |
 | onnxruntime | 1.31.0 | ⛔ upstream work |
 | torch | 2.14.1 | ⛔ upstream work |
 | torchaudio | 2.11.0 | ⛔ upstream work |
-| webrtcvad | 2.0.10 | 🔨 sdist only — needs a toolchain |
 
-**10 of 18 install without touching a compiler.** That includes the whole
-feature-extraction path people actually migrate for: `opensmile` eGeMAPS
-replaces Praat-based prosody features with no build step at all.
+**14 of 18 install on 3.15 today** — 10 from PyPI without touching a compiler,
+4 built here from source, 3 blocked upstream (torch, torchaudio, onnxruntime),
+and 1 buildable but not attempted (ctranslate2). The whole feature-extraction
+path people actually migrate for is present: `opensmile` eGeMAPS replaces
+Praat-based prosody features with no build step at all.
 
 Two different problems hide behind "no cp315 wheel", and pretending they are the
 same is how migrations fail:
@@ -74,6 +76,15 @@ OK   noisereduce  3.0.3      1639.7 ms
 OK   opensmile    2.6.0      2142.0 ms   (FeatureSet.eGeMAPSv02 available)
 OK   boto3        1.43.112   3979.9 ms
 ```
+
+## The four left in the matrix that are now done
+
+`av`, `pymupdf`, `praat-parselmouth` and `webrtcvad` each took more than one run
+to stop failing for the wrong reason. The full chain is v11 → v18 in the
+[sections below](#build-results--the-v018-chain-workflow-v11-to-v18); the short
+version is that the last blocker was one line in MuPDF's own wrapper generator,
+and the reason the fix kept not applying was a variable read by the wrong
+function.
 
 ## Building the wheels
 
@@ -142,6 +153,30 @@ Three rules earned the hard way, worth more than the wheels:
    ends in a check: `ctypes.CDLL('libclang.so')` with the variables unset,
    `pkg-config --modversion libavcodec`, `grep -c PyString_` equals zero,
    `import av` on a real 3.15 interpreter.
+
+## Build results — the v0.18 chain (workflow v11 to v18)
+
+Run [`38404713976`](https://github.com/indrad3v4/py315-audio-stack/actions/runs/38404713976)
+(commit `a1e169e`) is the first fully green run: `av`, `praat-parselmouth`,
+`pymupdf`, `webrtcvad` — `completed/success`, four artifacts, 60.4 MB total, and
+then 4/4 `IMPORT OK` on a live CPython 3.15.0 before release `v0.3.0` was tagged.
+
+What changed between v11 and v18, in one line each:
+
+| run | what it tried | what the log actually said |
+|---|---|---|
+| v11 | `XCFLAGS=-DPyString_FromString=…` | the macro never reached MuPDF's Maker; same errors |
+| v12 | patch `src/extra.i` only | SWIG regenerated the file and the alias came back at line 3529 |
+| v13 | fetch the sdist tarball, patch all three aliases, gate on zero | step died at the gate itself: `set -e` + `grep` with no match = exit 1 |
+| v14–v16 | patch the MuPDF tree, hand over a repacked `.tgz` | byte-identical failures to v12: the file was never read |
+| v17 | container env via `printf` with single quotes | container env finally correct (`which python` stops failing) — and the build still used a pristine tree |
+| **v18** | pass the patched **directory** through `PYMUPDF_SETUP_MUPDF_BUILD` | **green** — the generator that emits the wrapper is the patched one |
+
+The distinction that cost the most: `PYMUPDF_SETUP_MUPDF_TGZ` exists so the
+package can *create sdist archives*. The build path never looks at it. It checks
+`PYMUPDF_SETUP_MUPDF_BUILD`, and if that is unset it downloads a pristine MuPDF
+tree on its own — silently ignoring anything handed in. v14, v15, v16 and v17
+each proved this by failing with the same six compiler errors.
 
 ## Build results — runs 5 and 6 (workflow v5 / v6)
 
@@ -289,6 +324,11 @@ recipes/source-builds.md     per-package build notes, order of work, substitutio
   from real runs on CPython 3.15.0, and blocked packages are named as blocked.
   Nothing in this README is projected, extrapolated, or copied from another
   project's claims.
+- The four wheels built here are `cp315-cp315` (pymupdf is `abi3`, so it starts at
+  3.15). A *patch* release of 3.15 — 3.15.1, 3.15.2 — keeps the same ABI tag, so
+  these wheels stay valid; only a new *minor* (3.16) needs a new build.
+- The release is created by `v18_verify_release.sh`, which tags only after all
+  four wheels import on a live interpreter. If one fails, no tag appears.
 
 ## License
 
