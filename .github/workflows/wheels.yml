@@ -113,6 +113,8 @@ jobs:
             container_env: "PATH=$HOME/.cargo/bin:$PATH "
             module: pymupdf
             limited_api_off: "0"
+            fetch_mode: tarball
+            patches: pymupdf-cp315
             cflags: "-DPyString_FromString=PyUnicode_FromString -DPyString_FromStringAndSize=PyUnicode_FromStringAndSize"
             test_extra: ""
     env:
@@ -174,8 +176,45 @@ jobs:
           python -m pip install cibuildwheel
           mkdir -p dl src
 
+      - name: Fetch source tarball from PyPI (no build)
+        if: matrix.origin == 'pypi' && matrix.fetch_mode == 'tarball'
+        run: |
+          # pip's own download path prepares metadata for sdists, which for
+          # pymupdf means a full MuPDF build on the host -- from a private temp
+          # copy a source patch could never reach. Fetch the tarball directly.
+          python - "${{ matrix.package }}" <<'EOF'
+          import json, pathlib, sys, urllib.request
+          pkg = sys.argv[1]
+          d = json.load(urllib.request.urlopen(f"https://pypi.org/pypi/{pkg}/json"))
+          url = [f["url"] for f in d["urls"] if f["filename"].endswith((".tar.gz", ".zip"))][0]
+          print("tarball:", url)
+          pathlib.Path("dl").mkdir(exist_ok=True)
+          urllib.request.urlretrieve(url, "dl/" + url.rsplit("/", 1)[1])
+          EOF
+          shopt -s nullglob
+          for f in dl/*.tar.gz dl/*.tgz; do tar -xzf "$f" -C src; done
+          for f in dl/*.zip;            do unzip -q  "$f" -d src; done
+          ls -la src/
+
+      - name: Apply cp315 source patches
+        if: matrix.patches == 'pymupdf-cp315'
+        run: |
+          # src/extra.i and src_classic/helper-fields.i call PyString_FromString,
+          # a Python-2 alias that CPython 3.15 headers no longer declare. SWIG
+          # regenerates the wrapper from these files, so the alias has to be
+          # mapped in the source itself (v11/v12 proved CFLAGS cannot help).
+          before=$(grep -rc "PyString_FromString" src/ | grep -v ':0' | wc -l)
+          echo "файлы з PyString_FromString: $before"
+          grep -rl "PyString_FromString" src/ | while read -r f; do
+            sed -i 's/\bPyString_AsString\b/PyUnicode_AsUTF8/g; s/\bPyString_FromStringAndSize\b/PyUnicode_AsUTF8AndSize/g; s/\bPyString_FromString\b/PyUnicode_FromString/g' "$f"
+            echo "patched: $f"
+          done
+          left=$(grep -rn "\bPyString_" src/ | wc -l)
+          echo "засталося згадак PyString_*: $left"
+          test "$left" -eq 0
+
       - name: Fetch source from PyPI
-        if: matrix.origin == 'pypi'
+        if: matrix.origin == 'pypi' && matrix.fetch_mode != 'tarball'
         run: |
           python -m pip download --no-deps --no-binary :all: -d dl "${{ matrix.package }}"
           shopt -s nullglob
