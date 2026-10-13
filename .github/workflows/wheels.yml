@@ -68,7 +68,7 @@ jobs:
           # v5: manylinux_2_34 with el9 RPM Fusion -> died on
           # AV_HWDEVICE_TYPE_OHCODEC. Both enums are FFmpeg 7.1+, and no RPM
           # Fusion repo for el8/el9 carries FFmpeg 7 — so the container builds
-          # FFmpeg 7.1 from source and installs it to /usr with pkg-config
+          # FFmpeg 9.0.2 from source and installs it to /usr with pkg-config
           # metadata. That is the real prerequisite; everything else was noise.
           - package: av
             origin: pypi
@@ -78,9 +78,9 @@ jobs:
             container_system: >-
               yum install -y epel-release;
               yum install -y pkgconf-pkg-config nasm yasm gcc-c++ make xz;
-              curl -sL https://ffmpeg.org/releases/ffmpeg-7.1.tar.xz -o /tmp/ffmpeg.tar.xz;
+              curl -sL https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz -o /tmp/ffmpeg.tar.xz;
               tar -xf /tmp/ffmpeg.tar.xz -C /tmp;
-              cd /tmp/ffmpeg-7.1;
+              cd /tmp/ffmpeg-9.0.2;
               ./configure --prefix=/usr --enable-shared --disable-static --enable-gpl --enable-pic --disable-doc --libdir=/usr/lib64;
               make -j$(nproc);
               make install;
@@ -110,11 +110,13 @@ jobs:
               python -m pip install libclang;
               cp $(python -c "import clang, os; print(os.path.dirname(clang.__file__))")/native/libclang.so /usr/local/lib/libclang.so;
               ldconfig
-            container_env: "PATH=$HOME/.cargo/bin:$PATH PYMUPDF_SETUP_PY_LIMITED_API=0"
+            container_env: "PATH=$HOME/.cargo/bin:$PATH "
             module: pymupdf
+            limited_api_off: "0"
             test_extra: ""
     env:
       CIBW_BUILD: cp315-manylinux_x86_64
+      PYMUPDF_SETUP_PY_LIMITED_API: ${{ matrix.limited_api_off }}
       CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.manylinux_image }}
       CIBW_BEFORE_ALL_LINUX: ${{ matrix.container_system }}
       CIBW_ENVIRONMENT_LINUX: ${{ matrix.container_env }}
