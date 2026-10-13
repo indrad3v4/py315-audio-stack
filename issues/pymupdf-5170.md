@@ -2,7 +2,7 @@
 
 Purpose of this file: hold the exact text and patch we intend to send upstream, so it is
 reviewed here first — against the decisions in `docs/decisions.md` — before it leaves the
-repository. Nothing in this file is a promise; the status line says what was executed.
+repository. Nothing in this file is a promise; the status section says what was executed and what was not.
 
 ## Status, honestly
 
