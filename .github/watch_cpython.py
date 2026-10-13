@@ -67,16 +67,21 @@ def gh(*args):
     return result
 
 
+def wheel_tag(minor):
+    """'3.16' -> 'cp316' -- cibuildwheel's selector for that interpreter."""
+    return "cp" + minor.replace(".", "")
+
+
 def issue_body(minor, newest, repo):
     return f"""`python.org` now lists **{minor}** (newest {newest}), and the wheel
 matrix here has never built for it.
 
 What already happened automatically: this issue, and a `{WHEELS_WORKFLOW}` dispatch
-for `minor={minor}` — so the build is already running. Watch it under Actions.
+for `tag={wheel_tag(minor)}` — so the build is already running. Watch it under Actions.
 
 What still needs a person, if the build goes red:
 
-1. `CIBW_BUILD` is derived from the minor, so the selector is fine.
+1. `CIBW_BUILD` comes from the dispatch input, so the selector is fine.
 2. Every matrix line may need a different manylinux image, system package or
    patch for the new minor. Failed runs say which; the run-by-run notes in the
    README are the place to record it.
@@ -131,7 +136,7 @@ def main():
     if new_minors:
         for minor, newest in new_minors:
             if dry_run:
-                print(f"[dry-run] быў бы issue + dispatch для {minor}")
+                print(f"[dry-run] быў бы issue + dispatch для {minor} (тэг {wheel_tag(minor)})")
                 continue
             title = f"CPython {minor} is out — build the wheels"
             existing = gh(
@@ -151,7 +156,7 @@ def main():
                 print(f"{minor}: issue створаны")
             dispatched = gh(
                 "workflow", "run", WHEELS_WORKFLOW, "--repo", repo, "--ref", "main",
-                "-f", f"minor={minor}",
+                "-f", f"tag={wheel_tag(minor)}",
             )
             print(f"{minor}: dispatch {'ok' if dispatched.returncode == 0 else 'не прайшоў'}")
         state["new_minors"] = sorted(set(state.get("new_minors", [])) | {m for m, _ in new_minors})
