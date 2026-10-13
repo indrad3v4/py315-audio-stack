@@ -49,6 +49,7 @@ jobs:
             container_system: ""
             container_env: ""
             test_extra: "setuptools<81"
+            module: webrtcvad
           # v2: no Ninja. v3/v4.1: pip's ninja wheel landed off-PATH, and the
           # shell-quoted copy was mangled by cibuildwheel's own `sh -c` wrapper,
           # so `cp` and `which` both failed quietly and CMake still saw nothing.
@@ -61,6 +62,7 @@ jobs:
             container_system: "yum install -y epel-release; yum install -y ninja-build; ninja --version"
             container_env: ""
             test_extra: ""
+            module: parselmouth
           # v3: 'yum install ffmpeg-devel' -> no match (EPEL has no FFmpeg).
           # v4: RPM Fusion on Alma 8 -> compile died on AV_HWDEVICE_TYPE_AMF.
           # v5: manylinux_2_34 with el9 RPM Fusion -> died on
@@ -79,13 +81,15 @@ jobs:
               curl -sL https://ffmpeg.org/releases/ffmpeg-7.1.tar.xz -o /tmp/ffmpeg.tar.xz;
               tar -xf /tmp/ffmpeg.tar.xz -C /tmp;
               cd /tmp/ffmpeg-7.1;
-              ./configure --prefix=/usr --enable-shared --disable-static --enable-gpl --enable-pic --disable-doc;
+              ./configure --prefix=/usr --enable-shared --disable-static --enable-gpl --enable-pic --disable-doc --libdir=/usr/lib64;
               make -j$(nproc);
               make install;
               ldconfig;
+              export PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/share/pkgconfig;
               pkg-config --modversion libavcodec
             container_env: ""
             test_extra: ""
+            module: av
           # v2: cargo is needed during host-side metadata generation, not only in
           # the build container. v3: that step also needs clang's bindings.
           # v5: "pip install libclang" installs the *clang* package — there is no
@@ -106,7 +110,8 @@ jobs:
               python -m pip install libclang;
               cp $(python -c "import clang, os; print(os.path.dirname(clang.__file__))")/native/libclang.so /usr/local/lib/libclang.so;
               ldconfig
-            container_env: "PATH=$HOME/.cargo/bin:$PATH"
+            container_env: "PATH=$HOME/.cargo/bin:$PATH PYMUPDF_SETUP_PY_LIMITED_API=0"
+            module: pymupdf
             test_extra: ""
     env:
       CIBW_BUILD: cp315-manylinux_x86_64
@@ -116,7 +121,7 @@ jobs:
       CIBW_BEFORE_TEST_LINUX: ${{ matrix.test_extra && format('python -m pip install "{0}"', matrix.test_extra) || 'true' }}
       CIBW_BUILD_VERBOSITY: "1"
       # A wheel that installs but cannot import is not a wheel.
-      CIBW_TEST_COMMAND: python -c "import importlib; m=importlib.import_module('${{ matrix.package }}'.replace('-','_')); print('IMPORT OK', getattr(m,'__version__','?'))"
+      CIBW_TEST_COMMAND: python -c "import importlib; m=importlib.import_module('${{ matrix.module }}'); print('IMPORT OK', getattr(m,'__version__','?'))"
     steps:
       - uses: actions/checkout@v4
 
