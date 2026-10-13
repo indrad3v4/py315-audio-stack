@@ -199,9 +199,15 @@ jobs:
       # MuPDF's wrapper generator writes the C++ itself. src/*.i can be
       # clean and the generated file still carries the alias: scripts/wrap/
       # swig.py:743 emits PyString_FromString("format_tb") into every wrapper
-      # it produces. Patch the generator, hand PyMuPDF the patched MuPDF
-      # tarball through its own documented knob (PYMUPDF_SETUP_MUPDF_TGZ
-      # accepts a local .tgz), and gate on zero mentions remaining.
+      # it produces -- that single line is the whole cp315 wall. Patch the
+      # generator, hand PyMuPDF the patched *tree* and gate on zero mentions.
+      #
+      # v17 used PYMUPDF_SETUP_MUPDF_TGZ and nothing changed: that variable is
+      # read by get_mupdf_tgz(), which exists to create sdist *archives*. The
+      # build path is get_mupdf(), and with PYMUPDF_SETUP_MUPDF_BUILD unset it
+      # only checks the sdist's own mupdf.tgz (absent) and then downloads the
+      # pristine tree itself -- silently ignoring the handed-in file. The build
+      # knob takes a local *directory*, so that is what we pass.
       - name: Patch MuPDF's wrapper generator
         if: matrix.patches == 'pymupdf-cp315'
         run: |
@@ -224,15 +230,15 @@ jobs:
           left=$( (grep -rn "PyString_" "$DIR" || true) | wc -l )
           echo "PyString_* in the MuPDF tree: $before -> $left"
           test "$left" -eq 0
-          tar -czf "dl/${NAME}.tar.gz" -C mu "$NAME"
-          ls -la "dl/${NAME}.tar.gz"
-          echo "host path:      $(pwd)/dl/${NAME}.tar.gz"
-          # the container sees the repo at /project:
-          echo "PYMUPDF_SETUP_MUPDF_TGZ=$(pwd)/dl/${NAME}.tar.gz" >> "$GITHUB_ENV"
+          # Keep the patched tree itself: the build knob wants a directory.
+          rm -rf "dl/${NAME}" && mkdir -p dl && mv "$DIR" "dl/${NAME}"
+          test -f "dl/${NAME}/scripts/wrap/swig.py"
+          grep -c "PyString_" "dl/${NAME}/scripts/wrap/swig.py" || true
+          echo "host path:      $(pwd)/dl/${NAME}"
           # Single quotes matter: CIBW_ENVIRONMENT_LINUX is a *container-side*
           # string. Unquoted, the host shell expands $HOME/$PATH here and the
           # container gets the runner's PATH -- which broke `which python` in v16.
-          printf 'CIBW_ENVIRONMENT_LINUX=%s PYMUPDF_SETUP_MUPDF_TGZ=/project/dl/%s.tar.gz\n' \
+          printf 'CIBW_ENVIRONMENT_LINUX=%s PYMUPDF_SETUP_MUPDF_BUILD=/project/dl/%s\n' \
             '${{ matrix.container_env }}' "${NAME}" >> "$GITHUB_ENV"
           grep -h CIBW_ENVIRONMENT_LINUX "$GITHUB_ENV"
 
