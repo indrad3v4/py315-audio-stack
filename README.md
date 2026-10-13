@@ -95,6 +95,42 @@ pip install --find-links https://github.com/<owner>/py315-audio-stack/releases/l
 Per-package system dependencies (SWIG, FFmpeg headers, CMake, Rust) are declared
 in the workflow, not hidden in a wiki.
 
+## Published wheels — release [v0.2.0](https://github.com/indrad3v4/py315-audio-stack/releases/tag/v0.2.0)
+
+Three of four packages now build, publish, and — the part that matters — install
+into a live CPython 3.15.0 and import:
+
+| package | wheel | size | check on live 3.15.0 |
+|---|---|---|---|
+| `av` | `av-19.0.1-cp315-cp315-manylinux_2_34_x86_64.whl` | 23.5 MB | `import av` → 19.0.1, links libavcodec 63.1.102 (FFmpeg 9) |
+| `praat-parselmouth` | `praat_parselmouth-0.4.7-cp315-cp315-manylinux…whl` | 10.9 MB | `import parselmouth` → 0.4.7 |
+| `webrtcvad` | `webrtcvad-2.0.10-cp315-cp315-manylinux…whl` | 86 KB | import works with `setuptools<81` installed |
+
+`pip install <wheel-url>` from the release is the intended path; the wheels are
+`cp315-cp315`, i.e. version-specific, because upstream ships none.
+
+## The four walls, and what each one actually was
+
+Every failure below looked like a package problem and was not one:
+
+| symptom | real cause | fix |
+|---|---|---|
+| `av`: `AV_HWDEVICE_TYPE_AMF` / `…_OHCODEC` undeclared | FFmpeg too old — 4.2 in Alma 8, 5.1 in RPM Fusion el9, and PyAV's README says its release supports **FFmpeg 9.x** | build FFmpeg 9.0.2 from source in the container |
+| `pymupdf`: `libclang.so: cannot open shared object file` | `pip install libclang` installs the **`clang`** package (no `libclang` module), and the metadata build runs in pip's isolated env where `LIBCLANG_PATH` never arrives | put the `.so` where `LD_LIBRARY_PATH` already points; smoke-test it with no `LIBCLANG_*` set |
+| `pymupdf`: `PyString_FromString` undeclared | the sdist calls a **Python-2 alias** (`src/extra.i:228`, `src_classic/helper-fields.i:326`, `helper-xobject.i:140`) that 3.15 headers no longer declare | patch the aliases in the source tree; neither `CFLAGS` nor `XCFLAGS` can reach MuPDF's own Maker flags |
+| `praat-parselmouth`: `CMake Error: CMAKE_MAKE_PROGRAM` | the pip `ninja` wheel landed off-PATH and the shell-quoted copy was mangled by cibuildwheel's `sh -c` wrapper | `yum install -y epel-release ninja-build` — no quoting, no PATH games |
+
+Two rules earned the hard way, both worth more than the wheels:
+
+1. **Environment variables are not a transport.** Rust, FFmpeg, Ninja and
+   libclang all failed at some point because a variable was set in the wrong
+   layer (host step vs container, `CIBW_ENVIRONMENT` vs job level). What travels
+   reliably is a path in the filesystem that the failing step can already see.
+2. **A green job that never loads the artifact proves nothing.** Every fix here
+   ends in a check: `ctypes.CDLL('libclang.so')` with the variables unset,
+   `pkg-config --modversion libavcodec`, `grep -c PyString_` equals zero,
+   `import av` on a real 3.15 interpreter.
+
 ## Build results — runs 5 and 6 (workflow v5 / v6)
 
 Runs [`38322566111`](https://github.com/indrad3v4/py315-audio-stack/actions/runs/38322566111) and
