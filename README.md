@@ -41,7 +41,7 @@ verdicts: `wheel` · `wheel+pure` · `py3-wheel` · `pure` · `no-wheel-for-you`
 | av | 19.0.1 | ✅ cp315 wheel — built here, [v0.3.0](https://github.com/indrad3v4/py315-audio-stack/releases/tag/v0.3.0) |
 | praat-parselmouth | 0.4.7 | ✅ cp315 wheel — built here, v0.3.0 |
 | pymupdf | 1.28.2 | ✅ cp315 abi3 wheel — built here, v0.3.0 |
-| webrtcvad | 2.0.10 | ✅ cp315 wheel — built here, v0.3.0 (sdist only upstream; imports `pkg_resources`, so it wants `setuptools<81`) |
+| webrtcvad | 2.0.10 | ⚠️ cp315 wheel — built here, v0.3.0, но **на 3.15 он не импортируется**: строка 1 — `import pkg_resources`, а setuptools ≥ 81 больше его не поставляет. Сборка теперь патчит исходник; доказательство — `docs/evidence/flight-315-2026-10-13.txt` |
 | ctranslate2 | 4.8.2 | ⚠️ wheels only up to cp314 — buildable, not attempted |
 | onnxruntime | 1.31.0 | ⛔ upstream work |
 | torch | 2.14.1 | ⛔ upstream work |
@@ -116,7 +116,7 @@ gates it: the tag exists only if all four say `IMPORT OK`.
 |---|---|---|---|
 | `av` | `av-19.0.1-cp315-cp315-manylinux_2_34_x86_64.whl` | 23.5 MB | `import av` → 19.0.1, links libavcodec 63.1.102 (FFmpeg 9) |
 | `praat-parselmouth` | `praat_parselmouth-0.4.7-cp315-cp315-manylinux…whl` | 10.9 MB | `import parselmouth` → 0.4.7 |
-| `webrtcvad` | `webrtcvad-2.0.10-cp315-cp315-manylinux…whl` | 86 KB | import works with `setuptools<81` installed |
+| `webrtcvad` | `webrtcvad-2.0.10-cp315-cp315-manylinux…whl` | 86 KB | import works **only** with `setuptools<81` installed — и даже тогда на 3.15 `pkg_resources` нет (пролёт 2026-10-13) |
 | `pymupdf` | `pymupdf-1.28.2-cp315-abi3-manylinux…whl` | 25.7 MB | `import pymupdf` → 1.28.2 (abi3 wheel) |
 
 `webrtcvad` imports `pkg_resources` at import time and never declares it, so it
