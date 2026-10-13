@@ -120,6 +120,10 @@ jobs:
       PYMUPDF_SETUP_PY_LIMITED_API: ${{ matrix.limited_api_off }}
       CFLAGS: ${{ matrix.cflags }}
       CXXFLAGS: ${{ matrix.cflags }}
+      # MuPDF builds the SWIG wrapper through its own Maker, which reads
+      # XCFLAGS/XCXXFLAGS -- plain CFLAGS never reaches it (v11 proved that).
+      XCFLAGS: ${{ matrix.cflags }}
+      XCXXFLAGS: ${{ matrix.cflags }}
       CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.manylinux_image }}
       CIBW_BEFORE_ALL_LINUX: ${{ matrix.container_system }}
       CIBW_ENVIRONMENT_LINUX: ${{ matrix.container_env }}
