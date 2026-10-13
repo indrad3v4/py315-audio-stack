@@ -196,6 +196,39 @@ jobs:
           for f in dl/*.zip;            do unzip -q  "$f" -d src; done
           ls -la src/
 
+      # MuPDF's wrapper generator writes the C++ itself. src/*.i can be
+      # clean and the generated file still carries the alias: scripts/wrap/
+      # swig.py:743 emits PyString_FromString("format_tb") into every wrapper
+      # it produces. Patch the generator, hand PyMuPDF the patched MuPDF
+      # tarball through its own documented knob (PYMUPDF_SETUP_MUPDF_TGZ
+      # accepts a local .tgz), and gate on zero mentions remaining.
+      - name: Patch MuPDF's wrapper generator
+        if: matrix.patches == 'pymupdf-cp315'
+        run: |
+          set -euo pipefail
+          VER=$(grep -oE "^version_mupdf = '[0-9.]+'" src/pymupdf-*/setup.py | head -1 | cut -d"'" -f2)
+          echo "MuPDF source version: $VER"
+          URL="https://mupdf.com/downloads/archive/mupdf-${VER}-source.tar.gz"
+          mkdir -p dl mu
+          curl -sSL -o dl/mupdf-src.tar.gz "$URL"
+          tar -xzf dl/mupdf-src.tar.gz -C mu
+          DIR=$(ls -d mu/*/ | head -1); DIR=${DIR%/}
+          NAME=$(basename "$DIR")
+          before=$(grep -rn "PyString_" "$DIR" | wc -l)
+          grep -rl "PyString_" "$DIR" | while read -r f; do
+            sed -i 's/\bPyString_FromStringAndSize\b/PyUnicode_AsUTF8AndSize/g; s/\bPyString_AsStringAndSize\b/PyUnicode_AsUTF8AndSize/g; s/\bPyString_AsString\b/PyUnicode_AsUTF8/g; s/\bPyString_FromString\b/PyUnicode_FromString/g' "$f"
+            echo "patched: $f"
+          done
+          left=$(grep -rn "PyString_" "$DIR" | wc -l)
+          echo "PyString_* in the MuPDF tree: $before -> $left"
+          test "$left" -eq 0
+          tar -czf "dl/${NAME}.tar.gz" -C mu "$NAME"
+          ls -la "dl/${NAME}.tar.gz"
+          echo "host path:      $(pwd)/dl/${NAME}.tar.gz"
+          # the container sees the repo at /project:
+          echo "PYMUPDF_SETUP_MUPDF_TGZ=$(pwd)/dl/${NAME}.tar.gz" >> "$GITHUB_ENV"
+          echo "CIBW_ENVIRONMENT_LINUX=${{ matrix.container_env }} PYMUPDF_SETUP_MUPDF_TGZ=/project/dl/${NAME}.tar.gz" >> "$GITHUB_ENV"
+
       - name: Apply cp315 source patches
         if: matrix.patches == 'pymupdf-cp315'
         run: |
