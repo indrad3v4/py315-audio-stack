@@ -95,16 +95,22 @@ pip install --find-links https://github.com/<owner>/py315-audio-stack/releases/l
 Per-package system dependencies (SWIG, FFmpeg headers, CMake, Rust) are declared
 in the workflow, not hidden in a wiki.
 
-## Published wheels — release [v0.2.0](https://github.com/indrad3v4/py315-audio-stack/releases/tag/v0.2.0)
+## Published wheels — release [v0.3.0](https://github.com/indrad3v4/py315-audio-stack/releases/tag/v0.3.0)
 
-Three of four packages now build, publish, and — the part that matters — install
-into a live CPython 3.15.0 and import:
+All four packages now build, publish, and — the part that matters — install into
+a live CPython 3.15.0 and import. The release is created by the same script that
+gates it: the tag exists only if all four say `IMPORT OK`.
 
 | package | wheel | size | check on live 3.15.0 |
 |---|---|---|---|
 | `av` | `av-19.0.1-cp315-cp315-manylinux_2_34_x86_64.whl` | 23.5 MB | `import av` → 19.0.1, links libavcodec 63.1.102 (FFmpeg 9) |
 | `praat-parselmouth` | `praat_parselmouth-0.4.7-cp315-cp315-manylinux…whl` | 10.9 MB | `import parselmouth` → 0.4.7 |
 | `webrtcvad` | `webrtcvad-2.0.10-cp315-cp315-manylinux…whl` | 86 KB | import works with `setuptools<81` installed |
+| `pymupdf` | `pymupdf-1.28.2-cp315-abi3-manylinux…whl` | 25.7 MB | `import pymupdf` → 1.28.2 (abi3 wheel) |
+
+`webrtcvad` imports `pkg_resources` at import time and never declares it, so it
+needs `setuptools<81` in the environment: setuptools 81+ no longer ships
+`pkg_resources` at all. That is upstream's wart, not the wheel's.
 
 `pip install <wheel-url>` from the release is the intended path; the wheels are
 `cp315-cp315`, i.e. version-specific, because upstream ships none.
@@ -117,7 +123,10 @@ Every failure below looked like a package problem and was not one:
 |---|---|---|
 | `av`: `AV_HWDEVICE_TYPE_AMF` / `…_OHCODEC` undeclared | FFmpeg too old — 4.2 in Alma 8, 5.1 in RPM Fusion el9, and PyAV's README says its release supports **FFmpeg 9.x** | build FFmpeg 9.0.2 from source in the container |
 | `pymupdf`: `libclang.so: cannot open shared object file` | `pip install libclang` installs the **`clang`** package (no `libclang` module), and the metadata build runs in pip's isolated env where `LIBCLANG_PATH` never arrives | put the `.so` where `LD_LIBRARY_PATH` already points; smoke-test it with no `LIBCLANG_*` set |
-| `pymupdf`: `PyString_FromString` undeclared | the sdist calls a **Python-2 alias** (`src/extra.i:228`, `src_classic/helper-fields.i:326`, `helper-xobject.i:140`) that 3.15 headers no longer declare | patch the aliases in the source tree; neither `CFLAGS` nor `XCFLAGS` can reach MuPDF's own Maker flags |
+| `pymupdf`: `PyString_FromString` undeclared | not in the wrapper sources at all. MuPDF's **generator** emits it: `scripts/wrap/swig.py:743` writes `PyString_FromString("format_tb")` into every wrapper it produces, so patching `.i` files is a no-op — and the one occurrence multiplies across the generated `.cpp` | patch the generator as well, and gate on zero mentions |
+| `pymupdf`: patched tree ignored, byte-identical errors | `PYMUPDF_SETUP_MUPDF_TGZ` is read by `get_mupdf_tgz()`, which exists to build sdist *archives*. The build path is `get_mupdf()`, which reads `PYMUPDF_SETUP_MUPDF_BUILD` (a **directory**) and otherwise downloads a pristine tree itself, silently ignoring the file it was handed | pass a directory through the build knob, not a tarball through the archiving knob |
+| CI died the instant the patch succeeded | `set -e` plus `grep` with no matches: grep exits 1 when it finds nothing, so the gate that proves "zero mentions remain" killed the step exactly when it became true | `(grep … \|\| true) \| wc -l` |
+| container: `cibuildwheel: Command ['which', 'python'] failed` | the container env string was appended with `echo` in double quotes, so `$HOME`/`$PATH` expanded **on the runner** and the host PATH replaced the image's | write the container-side string single-quoted, and print it to the log |
 | `praat-parselmouth`: `CMake Error: CMAKE_MAKE_PROGRAM` | the pip `ninja` wheel landed off-PATH and the shell-quoted copy was mangled by cibuildwheel's `sh -c` wrapper | `yum install -y epel-release ninja-build` — no quoting, no PATH games |
 
 Two rules earned the hard way, both worth more than the wheels:
@@ -126,7 +135,10 @@ Two rules earned the hard way, both worth more than the wheels:
    libclang all failed at some point because a variable was set in the wrong
    layer (host step vs container, `CIBW_ENVIRONMENT` vs job level). What travels
    reliably is a path in the filesystem that the failing step can already see.
-2. **A green job that never loads the artifact proves nothing.** Every fix here
+2. **A gate must survive its own success.** A check whose success condition is
+   "nothing found" fails under `set -e` the moment it works, and a check that
+   writes its verdict into the wrong layer reports a green that means nothing.
+3. **A green job that never loads the artifact proves nothing.** Every fix here
    ends in a check: `ctypes.CDLL('libclang.so')` with the variables unset,
    `pkg-config --modversion libavcodec`, `grep -c PyString_` equals zero,
    `import av` on a real 3.15 interpreter.
