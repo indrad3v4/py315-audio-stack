@@ -140,7 +140,7 @@ Every failure below looked like a package problem and was not one:
 | container: `cibuildwheel: Command ['which', 'python'] failed` | the container env string was appended with `echo` in double quotes, so `$HOME`/`$PATH` expanded **on the runner** and the host PATH replaced the image's | write the container-side string single-quoted, and print it to the log |
 | `praat-parselmouth`: `CMake Error: CMAKE_MAKE_PROGRAM` | the pip `ninja` wheel landed off-PATH and the shell-quoted copy was mangled by cibuildwheel's `sh -c` wrapper | `yum install -y epel-release ninja-build` — no quoting, no PATH games |
 
-Three rules earned the hard way, worth more than the wheels:
+Four rules earned the hard way, worth more than the wheels:
 
 1. **Environment variables are not a transport.** Rust, FFmpeg, Ninja and
    libclang all failed at some point because a variable was set in the wrong
@@ -153,6 +153,13 @@ Three rules earned the hard way, worth more than the wheels:
    ends in a check: `ctypes.CDLL('libclang.so')` with the variables unset,
    `pkg-config --modversion libavcodec`, `grep -c PyString_` equals zero,
    `import av` on a real 3.15 interpreter.
+4. **A variable that already carries its prefix must not be given a second one.**
+   The wheel tag lives in `CP_TAG` / `inputs.tag` *with* its `cp`. Writing the
+   field as `cp${{ inputs.tag || 'cp315' }}` builds `cpcp315`, cibuildwheel finds
+   no such build identifier, and every job dies inside a minute — while the YAML
+   still parses and `actionlint` still passes. Only the run itself catches this.
+   (Related: GitHub expressions have no `replace()`, so never compute a tag in
+   YAML — compute it in the script that dispatches.)
 
 ## Build results — the v0.18 chain (workflow v11 to v18)
 
